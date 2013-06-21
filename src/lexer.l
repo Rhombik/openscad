@@ -26,7 +26,6 @@
 
 %{
 
-#include "typedefs.h"
 #include "handle_dep.h"
 #include "printutils.h"
 #include "parsersettings.h"
@@ -35,9 +34,7 @@
 #include <assert.h>
 #include <boost/foreach.hpp>
 #include <boost/lexical_cast.hpp>
-#include <boost/filesystem.hpp>
-namespace fs = boost::filesystem;
-#include "boosty.h"
+#include <vector>
 
 //isatty for visual c++ and mingw-cross-env
 #if defined __WIN32__ && ! defined _MSC_VER
@@ -55,7 +52,7 @@ static void yyunput(int, char*) __attribute__((unused));
 #endif
 extern const char *parser_input_buffer;
 extern std::string parser_source_path;
-extern FileModule *rootmodule;
+extern Module *currmodule;
 
 #define YY_INPUT(buf,result,max_size) {   \
   if (yyin && yyin != stdin) {            \
@@ -78,8 +75,8 @@ extern FileModule *rootmodule;
 }
 
 void includefile();
-fs::path sourcepath();
-std::vector<fs::path> path_stack;
+std::string sourcepath();
+std::vector<std::string> path_stack;
 std::vector<FILE*> openfiles;
 std::vector<std::string> openfilenames;
 
@@ -100,7 +97,7 @@ E [Ee][+-]?{D}+
 
 %%
 
-include[ \t\r\n>]*"<"	{ BEGIN(cond_include); filepath = filename = "";}
+include[ \t\r\n>]*"<"	{ BEGIN(cond_include); }
 <cond_include>{
 [^\t\r\n>]*"/"	{ filepath = yytext; }
 [^\t\r\n>/]+	{ filename = yytext; }
@@ -113,16 +110,17 @@ use[ \t\r\n>]*"<"	{ BEGIN(cond_use); }
 [^\t\r\n>]+	{ filename = yytext; }
  ">"		{ 
 	BEGIN(INITIAL); 
-        fs::path fullpath = find_valid_path(sourcepath(), fs::path(filename), &openfilenames);
-	if (fullpath.empty()) {
-          PRINTB("WARNING: Can't open library '%s'.", filename);
+        /* Only accept regular files which exists */
+    if (filename.size() > 0) {
+          handle_dep(filename);
           parserlval.text = strdup(filename.c_str());
-	} else {
-          handle_dep(fullpath.string());
-          parserlval.text = strdup(fullpath.string().c_str());
-	}
-        return TOK_USE;
-    }
+          return TOK_USE;
+        } else {
+          PRINTB("WARNING: Can't open 'use' file '%s'.", filename);
+          if ( filename.size() == 0 )
+            PRINT("WARNING: 'use' filename is blank");
+        }
+ }
 }
 
 <<EOF>> {
@@ -182,50 +180,32 @@ use[ \t\r\n>]*"<"	{ BEGIN(cond_use); }
 
 %%
 
-fs::path sourcepath()
+std::string sourcepath()
 {
   if (!path_stack.empty()) return path_stack.back();
   
-  return fs::path(parser_source_path);
+  return parser_source_path;
 }
 
 /*
   Rules for include <path/file>
   1) include <sourcepath/path/file>
   2) include <librarydir/path/file>
-
-  Globals used: filepath, sourcepath, filename
  */
 void includefile()
 {
-  fs::path localpath = fs::path(filepath) / filename;
-  fs::path fullpath = find_valid_path(sourcepath(), localpath, &openfilenames);
-  if (!fullpath.empty()) {
-    rootmodule->registerInclude(boosty::stringy(localpath), boosty::stringy(fullpath));
-  }
-  else {
-    rootmodule->registerInclude(boosty::stringy(localpath), boosty::stringy(localpath));
-    PRINTB("WARNING: Can't open include file '%s'.", boosty::stringy(localpath));
-    if (path_stack.size() > 0) path_stack.pop_back();
-    return;
-  };
+  if (filename.empty()) return;
 
-  std::string fullname = boosty::stringy(fullpath);
-
-  filepath.clear();
-  path_stack.push_back(fullpath.parent_path());
-
-  handle_dep(fullname);
-
-  yyin = fopen(fullname.c_str(), "r");
+  handle_dep(filename);
+  currmodule->registerInclude(filename);
+  yyin = fopen(filename.c_str(), "r");
   if (!yyin) {
-    PRINTB("WARNING: Can't open include file '%s'.", boosty::stringy(localpath));
+    PRINTB("WARNING: Can't open 'include' file '%s'.", filename);
     path_stack.pop_back();
     return;
   }
-
   openfiles.push_back(yyin);
-  openfilenames.push_back(fullname);
+  openfilenames.push_back(filename);
   filename.clear();
   
   yypush_buffer_state(yy_create_buffer(yyin, YY_BUF_SIZE));

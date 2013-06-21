@@ -3,7 +3,7 @@ MOC_DIR = objects
 UI_DIR = objects
 RCC_DIR = objects
 
-include(win.pri)
+include(win32.pri)
 include(flex.pri)
 include(bison.pri)
 include(cgal.pri)

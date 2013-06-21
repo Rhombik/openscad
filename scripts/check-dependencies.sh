@@ -155,15 +155,8 @@ flex_sysver()
 
 bison_sysver()
 {
-  # bison (GNU Bison) 2.7.12-4996
   if [ ! -x $1/bin/bison ]; then return ; fi
-  bison_sver=`$1/bin/bison --version | grep bison`
-  debug bison_sver1: $bison_sver
-  bison_sver=`echo $bison_sver | awk -F ")" ' { print $2 } '`
-  debug bison_sver2: $bison_sver
-  bison_sver=`echo $bison_sver | awk -F "-" ' { print $1 } '`
-  debug bison_sver3: $bison_sver
-  bison_sysver_result=$bison_sver
+  bison_sysver_result=`$1/bin/bison --version | grep bison | sed s/"[^0-9.]"/" "/g`
 }
 
 gcc_sysver()
@@ -432,7 +425,7 @@ find_installed_version()
         debug $depname"_sysver" $syspath
         eval $depname"_sysver" $syspath
         fsv_tmp=`eval echo "$"$depname"_sysver_result"`
-        if [ $fsv_tmp ]; then break; fi
+		if [ $fsv_tmp ]; then break; fi
       fi
     done
   fi
@@ -458,23 +451,17 @@ check_old_local()
   warnon=
   if [ "`uname | grep -i linux`" ]; then
     header_list="opencsg.h CGAL boost GL/glew.h gmp.h mpfr.h eigen2 eigen3"
-    for i in $header_list; do
+    liblist="libboost_system libboost_system-mt libopencsg libCGAL libglew"
+    for i in $header_list $liblist; do
       if [ -e /usr/local/include/$i ]; then
         echo "Warning: you have a copy of "$i" under /usr/local/include"
         warnon=1
       fi
-    done
-    liblist="libboost_system libboost_system-mt libopencsg libCGAL libglew"
-    for i in $liblist; do
       if [ -e /usr/local/lib/$i.so ]; then
         echo "Warning: you have a copy of "$i" under /usr/local/lib"
         warnon=1
       fi
     done
-    if [ -e /usr/local/lib/pkgconfig ]; then
-      echo "Warning: you have pkgconfig under /usr/local/lib"
-      warnon=1
-    fi
   fi
   if [ $warnon ]; then
     echo "Please verify these local copies don't conflict with the system"
@@ -527,7 +514,7 @@ main()
     dep_minver=$find_min_version_result
     compare_version $dep_minver $dep_sysver
     dep_compare=$compare_version_result
-    pretty_print $depname $dep_minver $dep_sysver $dep_compare
+  	pretty_print $depname $dep_minver $dep_sysver $dep_compare
   done
   check_old_local
   check_misc

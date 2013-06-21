@@ -84,15 +84,15 @@ libraries from aptitude. If you're using Mac, or an older Linux/BSD, there
 are build scripts that download and compile the libraries from source. 
 Follow the instructions for the platform you're compiling on below.
 
-* [Qt4 (4.4 - 4.8)](http://www.qt.nokia.com/)
-* [CGAL (3.6 - 4.1)](http://www.cgal.org/)
- * [GMP (5.x)](http://www.gmplib.org/)
- * [cmake (2.8, required by CGAL and the test framework)](http://www.cmake.org/)
+* [Qt4 (4.4 - 4.7)](http://www.qt.nokia.com/)
+* [CGAL (3.6 - 4.0.2)](http://www.cgal.org/)
+ * [GMP (5.0.x)](http://www.gmplib.org/)
+ * [cmake (2.6 - 2.8, required by CGAL and the test framework)](http://www.cmake.org/)
  * [MPFR (3.x)](http://www.mpfr.org/)
- * [boost (1.35 - 1.53)](http://www.boost.org/)
+ * [boost (1.35 - 1.47)](http://www.boost.org/)
 * [OpenCSG (1.3.2)](http://www.opencsg.org/)
 * [GLEW (1.5.4 ->)](http://glew.sourceforge.net/)
-* [Eigen (2.0.x->3.x)](http://eigen.tuxfamily.org/)
+* [Eigen (2.0.13->3.1.1)](http://eigen.tuxfamily.org/)
 * [GCC C++ Compiler (4.2 ->)](http://gcc.gnu.org/)
 * [Bison (2.4)](http://www.gnu.org/software/bison/)
 * [Flex (2.5.35)](http://flex.sourceforge.net/)
@@ -108,15 +108,13 @@ This will download the latest sources into a directory named 'openscad'.
 To pull the MCAD library (http://reprap.org/wiki/MCAD), do the following:
 
     cd openscad
-    git submodule update --init
+    git submodule init
+    git submodule update
 
 ### Building for Mac OS X
 
-Prerequisites:
-* XCode, including XCode command-line tools (install from XCode Preferences).
-* [CMake](http://cmake.org), which can be installed manually or through MacPorts/homebrew.
-
-Then after you've cloned this git repository, run the script that sets up the
+First, make sure that you have XCode installed to get GCC. Then after
+you've cloned this git repository, run the script that sets up the
 environment variables.
 
     source setenv_mjau.sh
@@ -125,10 +123,11 @@ Then run the script to compile all the prerequisite libraries above:
 
     ./scripts/macosx-build-dependencies.sh
 
-You can also install the prerequisites using
-[MacPorts](http://www.macports.org).  Unfortunately,
-[brew](http://mxcl.github.com/homebrew/) doesn't yet support CGAL and
-OpenCSG.
+We currently don't use [MacPorts](http://www.macports.org) or
+[brew](http://mxcl.github.com/homebrew/) to install the prerequisite
+libraries because CGAL doesn't exist on brew and opencsg doesn't exist
+on ports. And more importantly, there are some patches to GMP in the
+compilation process.
 
 After that, follow the Compilation instructions below.
 
@@ -186,30 +185,22 @@ OpenSCAD for Windows is usually cross-compiled from Linux. If you wish to
 attempt an MSVC build on Windows, please see this site:
 http://en.wikibooks.org/wiki/OpenSCAD_User_Manual/Building_on_Windows
 
-To cross-build, first make sure that you have development tools 
+To cross-build first make sure that you have development tools 
 installed to get GCC. Then after you've cloned this git repository, 
-start a new clean bash shell and run the script that sets up the environment 
+start a new clean shell and run the script that sets up the environment 
 variables.
 
-    source ./scripts/setenv-mingw-xbuild.sh 32
+    source ./scripts/setenv-mingw-xbuild.sh
 
 Then run the script to download & compile all the prerequisite libraries above:
 
-    ./scripts/mingw-x-build-dependencies.sh 32
+    ./scripts/mingw-x-build-dependencies.sh
 
 Note that this process can take several hours, as it uses the 
 http://mxe.cc system to cross-build many libraries. After it is 
 complete, build OpenSCAD and package it to an installer:
 
     ./scripts/release-common.sh mingw32
-
-If you wish you can only build the openscad.exe binary:
-
-    cd mingw32
-    qmake .. CONFIG+=mingw-cross-env
-    make
-
-For a 64-bit Windows cross-build, replace 32 with 64 in the above instructions. 
 
 ### Compilation
 

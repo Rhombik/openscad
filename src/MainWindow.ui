@@ -38,7 +38,7 @@
           <property name="orientation">
            <enum>Qt::Vertical</enum>
           </property>
-          <widget class="QGLView" name="qglview" native="true"/>
+          <widget class="GLView" name="glview" native="true"/>
           <widget class="QTextEdit" name="console">
            <property name="readOnly">
             <bool>true</bool>
@@ -137,7 +137,6 @@
     <addaction name="fileActionOpen"/>
     <addaction name="menuOpenRecent"/>
     <addaction name="menuExamples"/>
-    <addaction name="fileShowLibraryFolder"/>
     <addaction name="separator"/>
     <addaction name="fileActionClose"/>
     <addaction name="fileActionSave"/>
@@ -689,17 +688,12 @@
     <string>Check for Update..</string>
    </property>
   </action>
-  <action name="fileShowLibraryFolder">
-   <property name="text">
-    <string>Show Library Folder...</string>
-   </property>
-  </action>
  </widget>
  <customwidgets>
   <customwidget>
-   <class>QGLView</class>
+   <class>GLView</class>
    <extends>QWidget</extends>
-   <header>QGLView.h</header>
+   <header>GLView.h</header>
    <container>1</container>
   </customwidget>
   <customwidget>

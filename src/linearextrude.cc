@@ -27,9 +27,8 @@
 #include "linearextrudenode.h"
 
 #include "module.h"
-#include "evalcontext.h"
+#include "context.h"
 #include "printutils.h"
-#include "fileutils.h"
 #include "builtin.h"
 #include "PolySetEvaluator.h"
 #include "openscad.h" // get_fragments_from_r()
@@ -39,25 +38,23 @@
 #include <boost/assign/std/vector.hpp>
 using namespace boost::assign; // bring 'operator+=()' into scope
 
-#include <boost/filesystem.hpp>
-namespace fs = boost::filesystem;
-
 class LinearExtrudeModule : public AbstractModule
 {
 public:
 	LinearExtrudeModule() { }
-	virtual AbstractNode *instantiate(const Context *ctx, const ModuleInstantiation *inst, const EvalContext *evalctx) const;
+	virtual AbstractNode *evaluate(const Context *ctx, const ModuleInstantiation *inst) const;
 };
 
-AbstractNode *LinearExtrudeModule::instantiate(const Context *ctx, const ModuleInstantiation *inst, const EvalContext *evalctx) const
+AbstractNode *LinearExtrudeModule::evaluate(const Context *ctx, const ModuleInstantiation *inst) const
 {
 	LinearExtrudeNode *node = new LinearExtrudeNode(inst);
 
-	AssignmentList args;
-	args += Assignment("file", NULL), Assignment("layer", NULL), Assignment("height", NULL), Assignment("origin", NULL), Assignment("scale", NULL), Assignment("center", NULL), Assignment("twist", NULL), Assignment("slices", NULL);
+	std::vector<std::string> argnames;
+	argnames += "file", "layer", "height", "origin", "scale", "center", "twist", "slices";
+	std::vector<Expression*> argexpr;
 
 	Context c(ctx);
-	c.setVariables(args, evalctx);
+	c.args(argnames, argexpr, inst->argnames, inst->argvalues);
 
 	node->fn = c.lookup_variable("$fn").toDouble();
 	node->fs = c.lookup_variable("$fs").toDouble();
@@ -73,28 +70,25 @@ AbstractNode *LinearExtrudeModule::instantiate(const Context *ctx, const ModuleI
 	Value twist = c.lookup_variable("twist", true);
 	Value slices = c.lookup_variable("slices", true);
 
-	if (!file.isUndefined() && file.type() == Value::STRING) {
+	if (!file.isUndefined()) {
 		PRINT("DEPRECATED: Support for reading files in linear_extrude will be removed in future releases. Use a child import() instead.");
-		node->filename = lookup_file(file.toString(), inst->path(), c.documentPath());
+		node->filename = c.getAbsolutePath(file.toString());
 	}
 
 	// if height not given, and first argument is a number,
 	// then assume it should be the height.
 	if (c.lookup_variable("height").isUndefined() &&
-			evalctx->numArgs() > 0 &&
-			evalctx->getArgName(0) == "" &&
-			evalctx->getArgValue(0).type() == Value::NUMBER) {
-		height = evalctx->getArgValue(0);
+			inst->argnames.size() > 0 && 
+			inst->argnames[0] == "" &&
+			inst->argvalues[0].type() == Value::NUMBER) {
+		height = Value(inst->argvalues[0]);
 	}
 
 	node->layername = layer.isUndefined() ? "" : layer.toString();
 	node->height = height.toDouble();
 	node->convexity = (int)convexity.toDouble();
 	origin.getVec2(node->origin_x, node->origin_y);
-	node->scale_x = node->scale_y = 1;
-	scale.getDouble(node->scale_x);
-	scale.getDouble(node->scale_y);
-	scale.getVec2(node->scale_x, node->scale_y);
+	node->scale = scale.toDouble();
 
 	if (center.type() == Value::BOOL)
 		node->center = center.toBool();
@@ -105,8 +99,8 @@ AbstractNode *LinearExtrudeModule::instantiate(const Context *ctx, const ModuleI
 	if (node->convexity <= 0)
 		node->convexity = 1;
 
-	if (node->scale_x < 0) node->scale_x = 0;
-	if (node->scale_y < 0) node->scale_y = 0;
+	if (node->scale <= 0)
+		node->scale = 1;
 
 	if (twist.type() == Value::NUMBER) {
 		node->twist = twist.toDouble();
@@ -120,8 +114,8 @@ AbstractNode *LinearExtrudeModule::instantiate(const Context *ctx, const ModuleI
 	}
 
 	if (node->filename.empty()) {
-		std::vector<AbstractNode *> instantiatednodes = inst->instantiateChildren(evalctx);
-		node->children.insert(node->children.end(), instantiatednodes.begin(), instantiatednodes.end());
+		std::vector<AbstractNode *> evaluatednodes = inst->evaluateChildren();
+		node->children.insert(node->children.end(), evaluatednodes.begin(), evaluatednodes.end());
 	}
 
 	return node;
@@ -149,14 +143,14 @@ std::string LinearExtrudeNode::toString() const
 
 	stream << this->name() << "(";
 	if (!this->filename.empty()) { // Ignore deprecated parameters if empty 
-		fs::path path((std::string)this->filename);
 		stream <<
 			"file = " << this->filename << ", "
 			"layer = " << QuotedString(this->layername) << ", "
 			"origin = [" << this->origin_x << ", " << this->origin_y << "], "
+			"scale = " << this->scale << ", "
 #ifndef OPENSCAD_TESTING
 			// timestamp is needed for caching, but disturbs the test framework
-			<< "timestamp = " << (fs::exists(path) ? fs::last_write_time(path) : 0) << ", "
+            << "timestamp = " << 0 << ", "
 #endif
 			;
 	}
@@ -168,7 +162,6 @@ std::string LinearExtrudeNode::toString() const
 	if (this->has_twist) {
 		stream << ", twist = " << this->twist << ", slices = " << this->slices;
 	}
-	stream << ", scale = [" << this->scale_x << ", " << this->scale_y << "]";
 	stream << ", $fn = " << this->fn << ", $fa = " << this->fa << ", $fs = " << this->fs << ")";
 	
 	return stream.str();

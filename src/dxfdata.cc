@@ -42,8 +42,6 @@
 #include <map>
 
 #include "value.h"
-#include "boost-utils.h"
-#include "boosty.h"
 
 /*! \class DxfData
 
@@ -138,9 +136,14 @@ DxfData::DxfData(double fn, double fs, double fa,
 		std::getline(stream, data);
 		boost::trim(data);
 
+        if(id_str.length() == 0) {
+            PRINTB("WARNING: Got a blank ID in DXF file:%s", filename);
+            break;
+        }
+
 		int id;
     try {
-		  id = boost::lexical_cast<int>(id_str);
+          id = boost::lexical_cast<int>(id_str);
     }
     catch (const boost::bad_lexical_cast &blc) {
 			if (!stream.eof()) {
@@ -390,14 +393,14 @@ DxfData::DxfData(double fn, double fs, double fa,
 	BOOST_FOREACH(const EntityList::value_type &i, unsupported_entities_list) {
 		if (layername.empty()) {
 			PRINTB("WARNING: Unsupported DXF Entity '%s' (%x) in %s.",
-						 i.first % i.second % QuotedString(boosty::stringy(boostfs_uncomplete(filename, fs::current_path()))));
+                         i.first % i.second % filename);
 		} else {
 			PRINTB("WARNING: Unsupported DXF Entity '%s' (%x) in layer '%s' of %s.",
-						 i.first % i.second % layername % QuotedString(boosty::stringy(boostfs_uncomplete(filename, fs::current_path()))));
+                         i.first % i.second % layername % filename);
 		}
 	}
 
-	// Extract paths from parsed data
+    // Extract paths from parsed data
 
 	typedef std::map<int, int> LineMap;
 	LineMap enabled_lines;

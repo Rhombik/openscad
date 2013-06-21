@@ -26,7 +26,7 @@
 
 #include "colornode.h"
 #include "module.h"
-#include "evalcontext.h"
+#include "context.h"
 #include "builtin.h"
 #include "printutils.h"
 #include <sstream>
@@ -40,26 +40,27 @@ class ColorModule : public AbstractModule
 {
 public:
 	ColorModule() { }
-	virtual AbstractNode *instantiate(const Context *ctx, const ModuleInstantiation *inst, const EvalContext *evalctx) const;
+	virtual AbstractNode *evaluate(const Context *ctx, const ModuleInstantiation *inst) const;
 
 private:
 	static boost::unordered_map<std::string, Color4f> colormap;
 };
 
 #include "colormap.h"
-AbstractNode *ColorModule::instantiate(const Context *ctx, const ModuleInstantiation *inst, const EvalContext *evalctx) const
+AbstractNode *ColorModule::evaluate(const Context *ctx, const ModuleInstantiation *inst) const
 {
 	ColorNode *node = new ColorNode(inst);
 
 	node->color[0] = node->color[1] = node->color[2] = -1.0;
 	node->color[3] = 1.0;
 
-	AssignmentList args;
+	std::vector<std::string> argnames;
+	std::vector<Expression*> argexpr;
 
-	args += Assignment("c", NULL), Assignment("alpha", NULL);
+	argnames += "c", "alpha";
 
 	Context c(ctx);
-	c.setVariables(args, evalctx);
+	c.args(argnames, argexpr, inst->argnames, inst->argvalues);
 
 	Value v = c.lookup_variable("c");
 	if (v.type() == Value::VECTOR) {
@@ -87,8 +88,8 @@ AbstractNode *ColorModule::instantiate(const Context *ctx, const ModuleInstantia
 		node->color[3] = alpha.toDouble();
 	}
 
-	std::vector<AbstractNode *> instantiatednodes = inst->instantiateChildren(evalctx);
-	node->children.insert(node->children.end(), instantiatednodes.begin(), instantiatednodes.end());
+	std::vector<AbstractNode *> evaluatednodes = inst->evaluateChildren();
+	node->children.insert(node->children.end(), evaluatednodes.begin(), evaluatednodes.end());
 
 	return node;
 }

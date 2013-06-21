@@ -1,0 +1,75 @@
+option optimize_for = LITE_RUNTIME;
+package NodeTaskProto;
+
+//Top level node task message
+message NodeTaskMsg {
+  enum NodeTaskType {
+    CGALTask = 0;
+    TransformTask = 1;
+    PolySetTask = 2;
+    HullTask = 3;
+  }
+  required NodeTaskType type = 1;
+  required uint32 id = 2;
+  
+  optional CGALTaskDetails cgalTaskDetails = 3;
+  optional TransformTaskDetails transformTaskDetails = 4;
+  optional PolySetTaskDetails polySetTaskDetails = 5;
+  optional HullTaskDetails hullTaskDetails = 6;
+}
+
+// Task specific details
+
+message CGALTaskDetails {
+  enum OpType {
+    CGE_UNION = 0;
+    CGE_INTERSECTION = 1;
+    CGE_DIFFERENCE = 2;
+    CGE_MINKOWSKI = 3;
+  } 
+  required OpType op = 1;
+  repeated Polyhedron polyhedrons = 2;
+}
+
+message TransformTaskDetails {
+  required Matrix matrix = 1;
+  repeated Polyhedron polyhedrons = 2;
+}
+
+message PolySetTaskDetails {
+  required PolySet polySet = 1;
+}
+
+message HullTaskDetails {
+  repeated Polyhedron polyhedrons = 1;
+}
+
+// Containers
+
+message Polyhedron {
+  required bool is2d = 1;
+  required string stream = 2;
+}
+
+message PolySet {
+  required bool is2d = 1;
+  required int32 convexivity = 2;
+  required double resolution = 3;
+  repeated Polygon polygons = 4;
+  repeated Polygon borders = 5;
+}
+
+message Polygon {
+  repeated Vector vectors = 1;
+}
+
+message Vector {
+  repeated double data = 1;
+}
+
+message Matrix {
+  required uint32 rows = 1;
+  required uint32 cols = 2;
+  repeated double data = 3;
+}
+

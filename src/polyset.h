@@ -1,7 +1,6 @@
 #ifndef POLYSET_H_
 #define POLYSET_H_
 
-#include "system-gl.h"
 #include "grid.h"
 #include "linalg.h"
 #include <vector>
@@ -28,21 +27,8 @@ public:
 	size_t memsize() const;
 	
 	BoundingBox getBoundingBox() const;
-
-#define CSGMODE_DIFFERENCE_FLAG 0x10
-	enum csgmode_e {
-		CSGMODE_NONE                  = 0x00,
-		CSGMODE_NORMAL                = 0x01,
-		CSGMODE_DIFFERENCE            = CSGMODE_NORMAL | CSGMODE_DIFFERENCE_FLAG,
-		CSGMODE_BACKGROUND            = 0x02,
-		CSGMODE_BACKGROUND_DIFFERENCE = CSGMODE_BACKGROUND | CSGMODE_DIFFERENCE_FLAG,
-		CSGMODE_HIGHLIGHT             = 0x03,
-		CSGMODE_HIGHLIGHT_DIFFERENCE  = CSGMODE_HIGHLIGHT | CSGMODE_DIFFERENCE_FLAG
-	};
-
-	void render_surface(csgmode_e csgmode, const Transform3d &m, GLint *shaderinfo = NULL) const;
-	void render_edges(csgmode_e csgmode) const;
 	std::string dump() const;
 };
+
 
 #endif

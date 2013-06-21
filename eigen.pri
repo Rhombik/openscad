@@ -15,6 +15,10 @@ OPENSCAD_LIBRARIES_DIR = $$(OPENSCAD_LIBRARIES)
 EIGEN2_DIR = $$(EIGEN2DIR)
 EIGEN_DIR = $$(EIGENDIR)
 
+CONFIG(mingw-cross-env) {
+  EIGEN_INCLUDEPATH = mingw-cross-env/include/eigen2
+}
+
 # Optionally specify location of Eigen3 using the 
 # OPENSCAD_LIBRARIES env. variable
 !isEmpty(OPENSCAD_LIBRARIES_DIR) {
@@ -53,16 +57,6 @@ isEmpty(EIGEN_INCLUDEPATH) {
     linux*|hurd*|unix*: EIGEN_INCLUDEPATH = /usr/include/eigen2
     macx: EIGEN_INCLUDEPATH = /opt/local/include/eigen2
   }
-}
-
-!exists($$EIGEN_INCLUDEPATH/Eigen/Core) {
-  EIGEN_CFLAGS = $$system("pkg-config --cflags eigen2")
-  EIGEN_INCLUDEPATH = $$replace(EIGEN_CFLAGS,"-I","")
-}
-
-!exists($$EIGEN_INCLUDEPATH/Eigen/Core) {
-  EIGEN_CFLAGS = $$system("pkg-config --cflags eigen3")
-  EIGEN_INCLUDEPATH = $$replace(EIGEN_CFLAGS,"-I","")
 }
 
 # disable Eigen SIMD optimizations for platforms where it breaks compilation

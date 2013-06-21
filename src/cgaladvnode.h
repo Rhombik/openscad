@@ -4,14 +4,12 @@
 #include "node.h"
 #include "visitor.h"
 #include "value.h"
-#include "linalg.h"
 
 enum cgaladv_type_e {
 	MINKOWSKI,
 	GLIDE,
 	SUBDIV,
-	HULL,
-	RESIZE
+	HULL
 };
 
 class CgaladvNode : public AbstractNode
@@ -31,8 +29,6 @@ public:
 	Value path;
 	std::string subdiv_type;
 	int convexity, level;
-	Vector3d newsize;
-	Eigen::Matrix<bool,3,1> autosize;
 	cgaladv_type_e type;
 };
 

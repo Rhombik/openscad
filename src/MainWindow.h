@@ -4,7 +4,7 @@
 #include <QMainWindow>
 #include "ui_MainWindow.h"
 #include "openscad.h"
-#include "modcontext.h"
+#include "context.h"
 #include "module.h"
 #include "Tree.h"
 #include "memory.h"
@@ -29,8 +29,8 @@ public:
 	QTimer *autoReloadTimer;
 	std::string autoReloadId;
 
-	ModuleContext top_ctx;
-	FileModule *root_module;      // Result of parsing
+	Context root_ctx;
+	Module *root_module;      // Result of parsing
 	ModuleInstantiation root_inst;    // Top level instance
 	AbstractNode *absolute_root_node; // Result of tree evaluation
 	AbstractNode *root_node;          // Root if the root modifier (!) is used
@@ -74,6 +74,7 @@ private slots:
 private:
 	void openFile(const QString &filename);
 	void refreshDocument();
+	AbstractNode *find_root_tag(AbstractNode *n);
 	void updateTemporalVariables();
 	bool fileChangedOnDisk();
 	bool includesChanged();
@@ -101,7 +102,6 @@ private slots:
 	void actionSave();
 	void actionSaveAs();
 	void actionReload();
-	void actionShowLibraryFolder();
 
 private slots:
 	void pasteViewportTranslation();

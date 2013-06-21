@@ -23,6 +23,7 @@ using boost::uintmax_t;
 
 #include <CGAL/Gmpq.h>
 #include <CGAL/Extended_cartesian.h>
+#include <CGAL/Simple_cartesian.h>
 #include <CGAL/Nef_polyhedron_2.h>
 #include <CGAL/Cartesian.h>
 #include <CGAL/Polyhedron_3.h>

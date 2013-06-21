@@ -3,10 +3,13 @@
 #include "polyset.h"
 #include "grid.h"
 #include <stdio.h>
-#include <boost/foreach.hpp>
 
 #include "system-gl.h"
 #include "mathc99.h"
+
+#include <QVector>
+#include <QPair>
+#include <QHash>
 
 #ifdef WIN32
 #  define STDCALL __stdcall
@@ -28,7 +31,7 @@ struct tess_triangle {
 
 static GLenum tess_type;
 static int tess_count;
-static std::vector<tess_triangle> tess_tri;
+static QVector<tess_triangle> tess_tri;
 static GLdouble *tess_p1, *tess_p2;
 
 static void STDCALL tess_vertex(void *vertex_data)
@@ -45,7 +48,7 @@ static void STDCALL tess_vertex(void *vertex_data)
 			tess_p2 = p;
 		}
 		if (tess_count > 1) {
-			tess_tri.push_back(tess_triangle(tess_p1, tess_p2, p));
+			tess_tri.append(tess_triangle(tess_p1, tess_p2, p));
 			tess_p2 = p;
 		}
 	}
@@ -58,9 +61,9 @@ static void STDCALL tess_vertex(void *vertex_data)
 		}
 		if (tess_count > 1) {
 			if (tess_count % 2 == 1) {
-				tess_tri.push_back(tess_triangle(tess_p2, tess_p1, p));
+				tess_tri.append(tess_triangle(tess_p2, tess_p1, p));
 			} else {
-				tess_tri.push_back(tess_triangle(tess_p1, tess_p2, p));
+				tess_tri.append(tess_triangle(tess_p1, tess_p2, p));
 			}
 			tess_p1 = tess_p2;
 			tess_p2 = p;
@@ -74,7 +77,7 @@ static void STDCALL tess_vertex(void *vertex_data)
 			tess_p2 = p;
 		}
 		if (tess_count == 2) {
-			tess_tri.push_back(tess_triangle(tess_p1, tess_p2, p));
+			tess_tri.append(tess_triangle(tess_p1, tess_p2, p));
 			tess_count = -1;
 		}
 	}
@@ -185,23 +188,12 @@ static bool point_on_line(double *p1, double *p2, double *p3)
 	return true;
 }
 
-typedef std::pair<int,int> pair_ii;
-inline void do_emplace( boost::unordered_multimap<int, pair_ii> &tri_by_atan2, int ai, const pair_ii &indexes)
-{
-#if BOOST_VERSION >= 104800
-			tri_by_atan2.emplace(ai, indexes);
-#else
-			std::pair< int, pair_ii > tmp( ai, indexes );
-			tri_by_atan2.insert( tmp );
-#endif
-}
-
 /*!
 	up: true if the polygon is facing in the normal direction (i.e. normal = [0,0,1])
 	rot: CLOCKWISE rotation around positive Z axis
  */
 
-void dxf_tesselate(PolySet *ps, DxfData &dxf, double rot, Vector2d scale, bool up, bool do_triangle_splitting, double h)
+void dxf_tesselate(PolySet *ps, DxfData &dxf, double rot, bool up, bool do_triangle_splitting, double h)
 {
 	GLUtesselator *tobj = gluNewTess();
 
@@ -222,7 +214,7 @@ void dxf_tesselate(PolySet *ps, DxfData &dxf, double rot, Vector2d scale, bool u
 
 
 	tess_tri.clear();
-	std::list<tess_vdata> vl;
+	QList<tess_vdata> vl;
 
 	gluTessBeginPolygon(tobj, NULL);
 
@@ -233,7 +225,7 @@ void dxf_tesselate(PolySet *ps, DxfData &dxf, double rot, Vector2d scale, bool u
 		gluTessNormal(tobj, 0, 0, +1);
 	}
 
-	Grid3d< std::pair<int,int> > point_to_path(GRID_COARSE);
+	Grid3d< QPair<int,int> > point_to_path(GRID_COARSE);
 
 	for (int i = 0; i < dxf.paths.size(); i++) {
 		if (!dxf.paths[i].is_closed)
@@ -242,12 +234,12 @@ void dxf_tesselate(PolySet *ps, DxfData &dxf, double rot, Vector2d scale, bool u
 		for (int j = 1; j < dxf.paths[i].indices.size(); j++) {
 			point_to_path.data(dxf.points[dxf.paths[i].indices[j]][0],
 												 dxf.points[dxf.paths[i].indices[j]][1],
-												 h) = std::pair<int,int>(i, j);
-			vl.push_back(tess_vdata());
-			vl.back().v[0] = scale[0] * dxf.points[dxf.paths[i].indices[j]][0];
-			vl.back().v[1] = scale[1] * dxf.points[dxf.paths[i].indices[j]][1];
-			vl.back().v[2] = h;
-			gluTessVertex(tobj, vl.back().v, vl.back().v);
+												 h) = QPair<int,int>(i, j);
+			vl.append(tess_vdata());
+			vl.last().v[0] = dxf.points[dxf.paths[i].indices[j]][0];
+			vl.last().v[1] = dxf.points[dxf.paths[i].indices[j]][1];
+			vl.last().v[2] = h;
+			gluTessVertex(tobj, vl.last().v, vl.last().v);
 		}
 		gluTessEndContour(tobj);
 	}
@@ -271,7 +263,7 @@ void dxf_tesselate(PolySet *ps, DxfData &dxf, double rot, Vector2d scale, bool u
 				point_on_line(tess_tri[i].p[1], tess_tri[i].p[2], tess_tri[i].p[0]) ||
 				point_on_line(tess_tri[i].p[2], tess_tri[i].p[0], tess_tri[i].p[1])) {
 			// printf("DEBUG: Removed triangle\n");
-			tess_tri.erase(tess_tri.begin() + i--);
+			tess_tri.remove(i--);
 		}
 	}
 
@@ -285,13 +277,13 @@ void dxf_tesselate(PolySet *ps, DxfData &dxf, double rot, Vector2d scale, bool u
 	if (do_triangle_splitting)
 	{
 		bool added_triangles = true;
-		typedef std::pair<int,int> pair_ii;
-		boost::unordered_multimap<int, pair_ii> tri_by_atan2;
+		typedef QPair<int,int> QPair_ii;
+		QHash<int, QPair_ii> tri_by_atan2;
 		for (int i = 0; i < tess_tri.size(); i++)
 		for (int j = 0; j < 3; j++) {
 			int ai = (int)round(atan2(fabs(tess_tri[i].p[(j+1)%3][0] - tess_tri[i].p[j][0]),
 					fabs(tess_tri[i].p[(j+1)%3][1] - tess_tri[i].p[j][1])) / 0.001);
-			do_emplace( tri_by_atan2, ai, std::pair<int,int>(i, j) );
+			tri_by_atan2.insertMulti(ai, QPair<int,int>(i, j));
 		}
 		while (added_triangles)
 		{
@@ -302,23 +294,20 @@ void dxf_tesselate(PolySet *ps, DxfData &dxf, double rot, Vector2d scale, bool u
 			for (int i = 0; i < tess_tri.size(); i++)
 			for (int k = 0; k < 3; k++)
 			{
-				boost::unordered_map<pair_ii, pair_ii> possible_neigh;
+				QHash<QPair_ii, QPair_ii> possible_neigh;
 				int ai = (int)floor(atan2(fabs(tess_tri[i].p[(k+1)%3][0] - tess_tri[i].p[k][0]),
 						fabs(tess_tri[i].p[(k+1)%3][1] - tess_tri[i].p[k][1])) / 0.001 - 0.5);
 				for (int j = 0; j < 2; j++) {
-					for (boost::unordered_multimap<int, pair_ii>::iterator it = tri_by_atan2.find(ai+j);
-							 it != tri_by_atan2.end();
-							 it++) {
-						if (i != it->first) possible_neigh[it->second] = it->second;
-					}
+					foreach (const QPair_ii &jl, tri_by_atan2.values(ai+j))
+						if (i != jl.first)
+							possible_neigh[jl] = jl;
 				}
 #ifdef DEBUG_TRIANGLE_SPLITTING
 				printf("%d/%d: %d\n", i, k, possible_neigh.size());
 #endif
-				typedef std::pair<pair_ii,pair_ii> ElemPair;
-				BOOST_FOREACH (const ElemPair &elem, possible_neigh) {
-					int j = elem.first.first;
-					for (int l = elem.first.second; l != (elem.first.second + 2) % 3; l = (l + 1) % 3)
+				foreach (const QPair_ii &jl, possible_neigh) {
+					int j = jl.first;
+					for (int l = jl.second; l != (jl.second + 2) % 3; l = (l + 1) % 3)
 					if (point_on_line(tess_tri[i].p[k], tess_tri[j].p[l], tess_tri[i].p[(k+1)%3])) {
 #ifdef DEBUG_TRIANGLE_SPLITTING
 						printf("%% %f %f %f %f %f %f [%d %d]\n",
@@ -327,18 +316,18 @@ void dxf_tesselate(PolySet *ps, DxfData &dxf, double rot, Vector2d scale, bool u
 								tess_tri[i].p[(k+1)%3][0], tess_tri[i].p[(k+1)%3][1],
 								i, j);
 #endif
-						tess_tri.push_back(tess_triangle(tess_tri[j].p[l],
+						tess_tri.append(tess_triangle(tess_tri[j].p[l],
 								tess_tri[i].p[(k+1)%3], tess_tri[i].p[(k+2)%3]));
 						for (int m = 0; m < 2; m++) {
-							int ai = (int)round(atan2(fabs(tess_tri.back().p[(m+1)%3][0] - tess_tri.back().p[m][0]),
-									fabs(tess_tri.back().p[(m+1)%3][1] - tess_tri.back().p[m][1])) / 0.001 );
-							do_emplace(tri_by_atan2, ai, std::pair<int,int>(tess_tri.size()-1, m));
+							int ai = (int)round(atan2(fabs(tess_tri.last().p[(m+1)%3][0] - tess_tri.last().p[m][0]),
+									fabs(tess_tri.last().p[(m+1)%3][1] - tess_tri.last().p[m][1])) / 0.001 );
+							tri_by_atan2.insertMulti(ai, QPair<int,int>(tess_tri.size()-1, m));
 						}
 						tess_tri[i].p[(k+1)%3] = tess_tri[j].p[l];
 						for (int m = 0; m < 2; m++) {
 							int ai = (int)round(atan2(fabs(tess_tri[i].p[(m+1)%3][0] - tess_tri[i].p[m][0]),
 									fabs(tess_tri[i].p[(m+1)%3][1] - tess_tri[i].p[m][1])) / 0.001 );
-							do_emplace(tri_by_atan2, ai, std::pair<int,int>(i, m));
+							tri_by_atan2.insertMulti(ai, QPair<int,int>(i, m));
 						}
 						added_triangles = true;
 					}

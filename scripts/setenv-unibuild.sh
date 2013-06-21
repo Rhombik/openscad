@@ -34,11 +34,6 @@ setenv_common()
  echo OPENSCAD_LIBRARIES modified
  echo GLEWDIR modified
 
- if [ "`uname -m | grep sparc64`" ]; then
-   echo detected sparc64. forcing 32 bit with export ABI=32
-   ABI=32
-   export ABI
- fi
 }
 
 setenv_freebsd()

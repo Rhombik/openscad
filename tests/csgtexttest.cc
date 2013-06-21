@@ -31,12 +31,13 @@
 #include "parsersettings.h"
 #include "node.h"
 #include "module.h"
-#include "modcontext.h"
+#include "context.h"
 #include "value.h"
 #include "export.h"
 #include "builtin.h"
 #include "Tree.h"
 
+#include <QCoreApplication>
 #ifndef _MSC_VER
 #include <getopt.h>
 #endif
@@ -51,6 +52,7 @@ namespace fs = boost::filesystem;
 
 std::string commandline_commands;
 std::string currentdir;
+QString examplesdir;
 
 void csgTree(CSGTextCache &cache, const AbstractNode &root)
 {
@@ -73,18 +75,19 @@ int main(int argc, char **argv)
 
 	Builtins::instance()->initialize();
 
+	QCoreApplication app(argc, argv);
 	fs::path original_path = fs::current_path();
 
 	currentdir = boosty::stringy( fs::current_path() );
 
-	parser_init(boosty::stringy(fs::path(argv[0]).branch_path()));
-	add_librarydir(boosty::stringy(fs::path(argv[0]).branch_path() / "../libraries"));
+	parser_init(QCoreApplication::instance()->applicationDirPath().toStdString());
+	add_librarydir(boosty::stringy(fs::path(QCoreApplication::instance()->applicationDirPath().toStdString()) / "../libraries"));
 
-	ModuleContext top_ctx;
-	top_ctx.registerBuiltin();
+	Context root_ctx;
+	register_builtin(root_ctx);
 
-	FileModule *root_module;
-	ModuleInstantiation root_inst("group");
+	AbstractModule *root_module;
+	ModuleInstantiation root_inst;
 	AbstractNode *root_node;
 
 	root_module = parsefile(filename);
@@ -97,7 +100,7 @@ int main(int argc, char **argv)
 	}
 
 	AbstractNode::resetIndexCounter();
-	root_node = root_module->instantiate(&top_ctx, &root_inst);
+	root_node = root_module->evaluate(&root_ctx, &root_inst);
 
 	Tree tree;
 	tree.setRoot(root_node);

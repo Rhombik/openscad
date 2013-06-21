@@ -32,7 +32,7 @@
 
  setFormat() is very slow. normally this doesnt matter because we
  only highlight a block or two at once. But when OpenSCAD first starts,
- QT automagically calls 'highlightBlock' on every single textblock in the file
+ QT automatigically calls 'highlightBlock' on every single textblock in the file
  even if it's not visible in the window. On a large file (50,000 lines) this
  can take several seconds.
 
@@ -103,7 +103,9 @@
    expected result: it should load in a reasonable amount of time
    action: scroll to bottom, put '=' after last ;
    expected result: there should be a highlight, and a report of syntax error
-    and it should be almost instantaneous.
+   action: comment out the highlighter code from mainwin.cc, recompile,
+    run openscad again on the large file. put '=' after last ;
+   expected result: there should be only a small difference in speed.
 
 8. action: open any file, and hold down 'f5' key to repeatedly reparse
    expected result: no crashing!
@@ -113,10 +115,6 @@
 
 10. action: type random string of [][][][]()()[][90,3904,00,000]
     expected result: all should be highlighted correctly
-
-11. action: type a single slash (/) or slash-star-star (/x**, remove x)
-     into a blank document.
-    expected result: don't crash esp. on mac
 
 */
 
@@ -136,7 +134,7 @@ Highlighter::Highlighter(QTextDocument *parent)
 	typeformats["keyword"].setForeground(QColor("Green"));
 	typeformats["keyword"].setToolTip("Keyword");
 
-	tokentypes["transform"] << "scale" << "translate" << "rotate" << "multmatrix" << "color" << "projection" << "hull" << "resize";
+	tokentypes["transform"] << "scale" << "translate" << "rotate" << "multmatrix" << "color" << "projection" << "hull";
 	typeformats["transform"].setForeground(QColor("Indigo"));
 
 	tokentypes["csgop"]	<< "union" << "intersection" << "difference" << "render";
@@ -151,7 +149,7 @@ Highlighter::Highlighter(QTextDocument *parent)
 	tokentypes["import"] << "include" << "use" << "import_stl" << "import" << "import_dxf" << "dxf_dim" << "dxf_cross";
 	typeformats["import"].setForeground(Qt::darkYellow);
 
-	tokentypes["special"] << "$children" << "child" << "$fn" << "$fa" << "$fs" << "$t" << "$vpt" << "$vpr";
+	tokentypes["special"] << "$children" << "child" << "$fn" << "$fa" << "$fb";
 	typeformats["special"].setForeground(Qt::darkGreen);
 
 	tokentypes["extrude"] << "linear_extrude" << "rotate_extrude";
@@ -166,7 +164,7 @@ Highlighter::Highlighter(QTextDocument *parent)
 	tokentypes["bool"] << "true" << "false";
 	typeformats["bool"].setForeground(QColor("DarkRed"));
 
-	// Put each token into single QHash, mapped to it's format
+	// Put each tokens into single QHash, mapped to it's format
 	QList<QString>::iterator ki;
 	QList<QString> toktypes = tokentypes.keys();
 	for ( ki=toktypes.begin(); ki!=toktypes.end(); ++ki ) {
@@ -251,14 +249,12 @@ void Highlighter::highlightBlock(const QString &text)
 	//  << ", err:" << errorPos << "," << errorState
 	//  << ", text:'" << text.toStdString() << "'\n";
 
-	// Split the block into chunks (tokens), based on whitespace,
-	// and then highlight each token as appropriate
+	// Split the block into pieces and highlight each as appropriate
 	QString newtext = text;
 	QStringList splitHelpers;
 	QStringList::iterator sh, token;
-	// splitHelpers - so "{[a+b]}" is treated as " { [ a + b ] } "
-	splitHelpers << tokentypes["operator"] << tokentypes["bracket"]
-	  << tokentypes["curlies"] << ":" << ",";
+	// splitHelpers - so "[a+b]" is treated as "[ a + b ]" and formatted
+	splitHelpers << tokentypes["operator"] << "(" << ")" << "[" << "]" << "," << ":";
 	for ( sh = splitHelpers.begin(); sh!=splitHelpers.end(); ++sh ) {
 		newtext = newtext.replace( *sh, " " + *sh + " ");
 	}
@@ -291,21 +287,21 @@ void Highlighter::highlightBlock(const QString &text)
 				state = QUOTE;
 				setFormat(n,1,quoteFormat);
 			} else if (text[n] == '/'){
-				if ( n+1 < text.size() && text[n+1] == '/'){
+				if (text[n+1] == '/'){
 					setFormat(n,text.size(),commentFormat);
 					break;
-				} else if ( n+1 < text.size() && text[n+1] == '*'){
+				} else if (text[n+1] == '*'){
 					setFormat(n++,2,commentFormat);
 					state = COMMENT;
 				}
 			}
 		} else if (state == QUOTE){
 			setFormat(n,1,quoteFormat);
-			if (text[n] == '"' && n-1 >=0 && text[n-1] != '\\')
+			if (text[n] == '"' && text[n-1] != '\\')
 				state = NORMAL;
 		} else if (state == COMMENT){
 			setFormat(n,1,commentFormat);
-			if (text[n] == '*' && n+1 < text.size() && text[n+1] == '/'){
+			if (text[n] == '*' && text[n+1] == '/'){
 				setFormat(++n,1,commentFormat);
 				state = NORMAL;
 			}

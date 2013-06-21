@@ -84,6 +84,5 @@ public:
 };
 
 std::ostream &operator<<(std::ostream &stream, const AbstractNode &node);
-AbstractNode *find_root_tag(AbstractNode *n);
 
 #endif

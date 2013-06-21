@@ -35,47 +35,15 @@
 			<string>Editor</string>
 			<key>CFBundleTypeIconFile</key>
 			<string>SCAD.icns</string>
-			<key>LSIsAppleDefaultForType</key>
+		        <key>LSIsAppleDefaultForType</key>
 			<true/>
-		</dict>
-		<dict>
-			<key>CFBundleTypeExtensions</key>
-			<array>
-				<string>stl</string>
-			</array>
-			<key>CFBundleTypeName</key>
-			<string>STL 3D file</string>
-			<key>CFBundleTypeRole</key>
-			<string>Viewer</string>
-		</dict>
-		<dict>
-			<key>CFBundleTypeExtensions</key>
-			<array>
-				<string>off</string>
-			</array>
-			<key>CFBundleTypeName</key>
-			<string>OFF 3D file</string>
-			<key>CFBundleTypeRole</key>
-			<string>Viewer</string>
-		</dict>
-		<dict>
-			<key>CFBundleTypeExtensions</key>
-			<array>
-				<string>dxf</string>
-			</array>
-			<key>CFBundleTypeName</key>
-			<string>DXF file</string>
-			<key>CFBundleTypeRole</key>
-			<string>Viewer</string>
 		</dict>
 	</array>
 	<key>NSAppleScriptEnabled</key>
-	<true/>
-	<key>NSPrincipalClass</key>
-	<string>NSApplication</string>
+        <true/>
 	<key>OSAScriptingDefinition</key>
 	<string>OpenSCAD.sdef</string>
-	<key>SUPublicDSAKeyFile</key>
-	<string>dsa_pub.pem</string>
+        <key>SUPublicDSAKeyFile</key>
+        <string>dsa_pub.pem</string>
 </dict>
 </plist>

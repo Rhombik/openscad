@@ -30,7 +30,7 @@
 #include "node.h"
 #include "module.h"
 #include "polyset.h"
-#include "modcontext.h"
+#include "context.h"
 #include "value.h"
 #include "export.h"
 #include "builtin.h"
@@ -43,6 +43,7 @@
 #include "cgal.h"
 #include "OffscreenView.h"
 
+#include <QCoreApplication>
 #ifndef _MSC_VER
 #include <getopt.h>
 #endif
@@ -56,6 +57,7 @@ namespace fs = boost::filesystem;
 
 std::string commandline_commands;
 std::string currentdir;
+QString examplesdir;
 
 using std::string;
 
@@ -66,6 +68,15 @@ void cgalTree(Tree &tree)
 	CGALEvaluator evaluator(tree);
 	Traverser evaluate(evaluator, *tree.root(), Traverser::PRE_AND_POSTFIX);
 	evaluate.execute();
+}
+
+AbstractNode *find_root_tag(AbstractNode *n)
+{
+	foreach(AbstractNode *v, n->children) {
+		if (v->modinst->tag_root) return v;
+		if (AbstractNode *vroot = find_root_tag(v)) return vroot;
+	}
+	return NULL;
 }
 
 struct CsgInfo
@@ -95,31 +106,31 @@ int main(int argc, char **argv)
 #endif
 	Builtins::instance()->initialize();
 
+	QCoreApplication app(argc, argv);
 	fs::path original_path = fs::current_path();
 
 	currentdir = boosty::stringy( fs::current_path() );
 
-	parser_init(boosty::stringy(fs::path(argv[0]).branch_path()));
-	add_librarydir(boosty::stringy(fs::path(argv[0]).branch_path() / "../libraries"));
+	parser_init(QCoreApplication::instance()->applicationDirPath().toStdString());
+	add_librarydir(boosty::stringy(fs::path(QCoreApplication::instance()->applicationDirPath().toStdString()) / "../libraries"));
 
-	ModuleContext top_ctx;
-	top_ctx.registerBuiltin();
+	Context root_ctx;
+	register_builtin(root_ctx);
 
-	FileModule *root_module;
-	ModuleInstantiation root_inst("group");
+	AbstractModule *root_module;
+	ModuleInstantiation root_inst;
 
 	root_module = parsefile(filename);
 	if (!root_module) {
 		exit(1);
 	}
 
-	fs::path fpath = boosty::absolute(fs::path(filename));
-	fs::path fparent = fpath.parent_path();
-	fs::current_path(fparent);
-	top_ctx.setDocumentPath(fparent.string());
+	if (fs::path(filename).has_parent_path()) {
+		fs::current_path(fs::path(filename).parent_path());
+	}
 
 	AbstractNode::resetIndexCounter();
-	AbstractNode *absolute_root_node = root_module->instantiate(&top_ctx, &root_inst);
+	AbstractNode *absolute_root_node = root_module->evaluate(&root_ctx, &root_inst);
 	AbstractNode *root_node;
 	// Do we have an explicit root node (! modifier)?
 	if (!(root_node = find_root_tag(absolute_root_node))) root_node = absolute_root_node;
@@ -154,14 +165,14 @@ int main(int argc, char **argv)
 		bbox = cgalRenderer.polyset->getBoundingBox();
 	}
 	
-	Camera cam(Camera::VECTOR);
-	cam.center = getBoundingCenter(bbox);
+	Vector3d center = getBoundingCenter(bbox);
 	double radius = getBoundingRadius(bbox);
 	
 	Vector3d cameradir(1, 1, -0.5);
-	cam.eye = cam.center - radius*2*cameradir;
-	csgInfo.glview->setCamera( cam );
-
+	Vector3d camerapos = center - radius*2*cameradir;
+	csgInfo.glview->setCamera(camerapos, center);
+	
+	
 	csgInfo.glview->setRenderer(&cgalRenderer);
 	csgInfo.glview->paintGL();
 	csgInfo.glview->save(outfile);

@@ -4,7 +4,6 @@
 #include <string>
 #include <vector>
 #include "value.h"
-#include "typedefs.h"
 
 class Expression
 {
@@ -15,7 +14,7 @@ public:
 	std::string var_name;
 
 	std::string call_funcname;
-	AssignmentList call_arguments;
+	std::vector<std::string> call_argnames;
 
 	// Boolean: ! && ||
 	// Operators: * / % + -
@@ -34,14 +33,10 @@ public:
 
 	Expression();
 	Expression(const Value &val);
-	Expression(const std::string &type, Expression *left, Expression *right);
-	Expression(const std::string &type, Expression *expr);
 	~Expression();
 
 	Value evaluate(const class Context *context) const;
 	std::string toString() const;
-
-	mutable int recursioncount;
 };
 
 std::ostream &operator<<(std::ostream &stream, const Expression &expr);

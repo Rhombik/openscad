@@ -6,11 +6,10 @@
 # 
 # This script must be run from the OpenSCAD source root directory
 #
-# Usage: macosx-build-dependencies.sh [-6lcd]
+# Usage: macosx-build-dependencies.sh [-6l]
 #  -6   Build only 64-bit binaries
 #  -l   Force use of LLVM compiler
 #  -c   Force use of clang compiler
-#  -d   Build for deployment (if not specified, e.g. Sparkle won't be built)
 #
 # Prerequisites:
 # - MacPorts: curl, cmake
@@ -28,17 +27,16 @@ OPTION_32BIT=true
 OPTION_LLVM=false
 OPTION_CLANG=false
 OPTION_GCC=false
-OPTION_DEPLOY=false
+DETECTED_LION=false
 export QMAKESPEC=macx-g++
 
 printUsage()
 {
-  echo "Usage: $0 [-6lcd]"
+  echo "Usage: $0 [-6lc]"
   echo
   echo "  -6   Build only 64-bit binaries"
   echo "  -l   Force use of LLVM compiler"
   echo "  -c   Force use of clang compiler"
-  echo "  -d   Build for deployment"
 }
 
 # FIXME: Support gcc/llvm/clang flags. Use -platform <whatever> to make this work? kintel 20130117
@@ -53,10 +51,6 @@ build_qt()
   fi
   tar xzf qt-everywhere-opensource-src-$version.tar.gz
   cd qt-everywhere-opensource-src-$version
-  if $OPTION_CLANG; then
-    # FIX for clang
-    sed -i "" -e "s/::TabletProximityRec/TabletProximityRec/g"  src/gui/kernel/qt_cocoa_helpers_mac_p.h
-  fi
   if $OPTION_32BIT; then
     QT_32BIT="-arch x86"
   fi
@@ -193,6 +187,7 @@ build_mpfr()
   cp x86_64/include/mpfr.h include/
   cp x86_64/include/mpf2mpfr.h include/
 }
+
 
 build_boost()
 {
@@ -348,9 +343,8 @@ build_sparkle()
   if $OPTION_32BIT; then
     SPARKLE_EXTRA_FLAGS="-arch i386"
   fi
-  xcodebuild clean
-  xcodebuild -arch x86_64 $SPARKLE_EXTRA_FLAGS
-  rm -rf $DEPLOYDIR/lib/Sparkle.framework
+  xcodebuild -project Sparkle.xcodeproj -scheme Sparkle -configuration Release -arch x86_64 $SPARKLE_EXTRA_FLAGS
+  rm -r $DEPLOYDIR/lib/Sparkle.framework
   cp -Rf build/Release/Sparkle.framework $DEPLOYDIR/lib/ 
   install_name_tool -id $DEPLOYDIR/lib/Sparkle.framework/Versions/A/Sparkle $DEPLOYDIR/lib/Sparkle.framework/Sparkle
 }
@@ -360,23 +354,21 @@ if [ ! -f $OPENSCADDIR/openscad.pro ]; then
   exit 0
 fi
 
-while getopts '6lcd' c
+while getopts '6lc' c
 do
   case $c in
     6) OPTION_32BIT=false;;
     l) OPTION_LLVM=true;;
     c) OPTION_CLANG=true;;
-    d) OPTION_DEPLOY=true;;
   esac
 done
 
-OSX_VERSION=`sw_vers -productVersion | cut -d. -f2`
-if (( $OSX_VERSION >= 8 )); then
-  echo "Detected Mountain Lion (10.8) or later"
-elif (( $OSX_VERSION >= 7 )); then
-  echo "Detected Lion (10.7) or later"
+OSVERSION=`sw_vers -productVersion | cut -d. -f2`
+if [[ $OSVERSION -ge 7 ]]; then
+  echo "Detected Lion or later"
+  DETECTED_LION=true
 else
-  echo "Detected Snow Leopard (10.6) or earlier"
+  echo "Detected Snow Leopard or earlier"
 fi
 
 USING_LLVM=false
@@ -388,7 +380,7 @@ elif $OPTION_GCC; then
   USING_GCC=true
 elif $OPTION_CLANG; then
   USING_CLANG=true
-elif (( $OSX_VERSION >= 7 )); then
+elif $DETECTED_LION; then
   USING_GCC=true
 fi
 
@@ -412,37 +404,15 @@ elif $USING_CLANG; then
   export QMAKESPEC=unsupported/macx-clang
 fi
 
-if (( $OSX_VERSION >= 8 )); then
-  echo "Setting build target to 10.6 or later"
-  MAC_OSX_VERSION_MIN=10.6
-else
-  echo "Setting build target to 10.5 or later"
-  MAC_OSX_VERSION_MIN=10.5
-fi
-
-if $OPTION_DEPLOY; then
-  echo "Building deployment version of libraries"
-else
-  OPTION_32BIT=false
-fi
-
-if $OPTION_32BIT; then
-  echo "Building combined 32/64-bit binaries"
-else
-  echo "Building 64-bit binaries"
-fi
-
 echo "Using basedir:" $BASEDIR
 mkdir -p $SRCDIR $DEPLOYDIR
 build_qt 4.8.4
 build_eigen 3.1.2
-build_gmp 5.1.1
-build_mpfr 3.1.2
-build_boost 1.53.0
+build_gmp 5.1.0
+build_mpfr 3.1.1
+build_boost 1.51.0
 # NB! For CGAL, also update the actual download URL in the function
 build_cgal 4.1
 build_glew 1.9.0
 build_opencsg 1.3.2
-if $OPTION_DEPLOY; then
-  build_sparkle 0ed83cf9f2eeb425d4fdd141c01a29d843970c20
-fi
+build_sparkle 0ed83cf9f2eeb425d4fdd141c01a29d843970c20

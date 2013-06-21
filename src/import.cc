@@ -28,12 +28,11 @@
 
 #include "module.h"
 #include "polyset.h"
-#include "evalcontext.h"
+#include "context.h"
 #include "builtin.h"
 #include "dxfdata.h"
 #include "dxftess.h"
 #include "printutils.h"
-#include "fileutils.h"
 #include "handle_dep.h" // handle_dep()
 
 #ifdef ENABLE_CGAL
@@ -45,13 +44,10 @@
 #include <sstream>
 #include <assert.h>
 #include <boost/algorithm/string.hpp>
-#include <boost/regex.hpp>
+#include <regex>
 #include <boost/lexical_cast.hpp>
-#include <boost/filesystem.hpp>
-namespace fs = boost::filesystem;
 #include <boost/assign/std/vector.hpp>
 using namespace boost::assign; // bring 'operator+=()' into scope
-#include "boosty.h"
 
 #include <boost/detail/endian.hpp>
 #include <boost/cstdint.hpp>
@@ -61,48 +57,30 @@ class ImportModule : public AbstractModule
 public:
 	import_type_e type;
 	ImportModule(import_type_e type = TYPE_UNKNOWN) : type(type) { }
-	virtual AbstractNode *instantiate(const Context *ctx, const ModuleInstantiation *inst, const EvalContext *evalctx) const;
+	virtual AbstractNode *evaluate(const Context *ctx, const ModuleInstantiation *inst) const;
 };
 
-AbstractNode *ImportModule::instantiate(const Context *ctx, const ModuleInstantiation *inst, const EvalContext *evalctx) const
+AbstractNode *ImportModule::evaluate(const Context *ctx, const ModuleInstantiation *inst) const
 {
-	AssignmentList args;
-	args += Assignment("file", NULL), Assignment("layer", NULL), Assignment("convexity", NULL), Assignment("origin", NULL), Assignment("scale", NULL);
-	args += Assignment("filename",NULL), Assignment("layername", NULL);
+	std::vector<std::string> argnames;
+	argnames += "file", "layer", "convexity", "origin", "scale";
+	std::vector<Expression*> argexpr;
 
-  // FIXME: This is broken. Tag as deprecated and fix
 	// Map old argnames to new argnames for compatibility
-	// To fix: 
-  // o after c.setVariables()
-	//   - if "filename" in evalctx: deprecated-warning && v.set_variable("file", value);
-	//   - if "layername" in evalctx: deprecated-warning && v.set_variable("layer", value);
-#if 0
 	std::vector<std::string> inst_argnames = inst->argnames;
 	for (size_t i=0; i<inst_argnames.size(); i++) {
 		if (inst_argnames[i] == "filename") inst_argnames[i] = "file";
 		if (inst_argnames[i] == "layername") inst_argnames[i] = "layer";
 	}
-#endif
 
 	Context c(ctx);
-	c.setDocumentPath(evalctx->documentPath());
-	c.setVariables(args, evalctx);
-#if 0 && DEBUG
-	c.dump(this, inst);
-#endif
+	c.args(argnames, argexpr, inst_argnames, inst->argvalues);
 
 	Value v = c.lookup_variable("file");
-	if (v.isUndefined()) {
-		v = c.lookup_variable("filename");
-		if (!v.isUndefined()) {
-			PRINT("DEPRECATED: filename= is deprecated. Please use file=");
-		}
-	}
-	std::string filename = lookup_file(v.isUndefined() ? "" : v.toString(), inst->path(), ctx->documentPath());
+	std::string filename = c.getAbsolutePath(v.isUndefined() ? "" : v.toString());
 	import_type_e actualtype = this->type;
 	if (actualtype == TYPE_UNKNOWN) {
-		std::string extraw = boosty::extension_str( fs::path(filename) );
-		std::string ext = boost::algorithm::to_lower_copy( extraw );
+        std::string ext = filename.substr(filename.find_last_of("."));
 		if (ext == ".stl") actualtype = TYPE_STL;
 		else if (ext == ".off") actualtype = TYPE_OFF;
 		else if (ext == ".dxf") actualtype = TYPE_DXF;
@@ -116,12 +94,6 @@ AbstractNode *ImportModule::instantiate(const Context *ctx, const ModuleInstanti
 
 	node->filename = filename;
 	Value layerval = c.lookup_variable("layer", true);
-	if (layerval.isUndefined()) {
-		layerval = c.lookup_variable("layername");
-		if (!layerval.isUndefined()) {
-			PRINT("DEPRECATED: layername= is deprecated. Please use layer=");
-		}
-	}
 	node->layername = layerval.isUndefined() ? ""  : layerval.toString();
 	node->convexity = c.lookup_variable("convexity", true).toDouble();
 
@@ -156,9 +128,7 @@ union stl_facet {
 
 void uint32_byte_swap( uint32_t &x )
 {
-#if __GNUC__ >= 4 && __GNUC_MINOR__ >= 3
-	x = __builtin_bswap32( x );
-#elif defined(__clang__)
+#if defined(__GNUC__) || defined(__clang__)
 	x = __builtin_bswap32( x );
 #elif defined(_MSC_VER)
 	x = _byteswap_ulong( x );
@@ -198,13 +168,13 @@ PolySet *ImportNode::evaluate_polyset(class PolySetEvaluator *) const
 
 		p = new PolySet();
 
-		boost::regex ex_sfe("solid|facet|endloop");
-		boost::regex ex_outer("outer loop");
-		boost::regex ex_vertex("vertex");
-		boost::regex ex_vertices("\\s*vertex\\s+([^\\s]+)\\s+([^\\s]+)\\s+([^\\s]+)");
+        std::regex ex_sfe("solid|facet|endloop");
+        std::regex ex_outer("outer loop");
+        std::regex ex_vertex("vertex");
+        std::regex ex_vertices("\\s*vertex\\s+([^\\s]+)\\s+([^\\s]+)\\s+([^\\s]+)");
 
 		bool binary = false;
-		std::streampos file_size = f.tellg();
+		int file_size = f.tellg();
 		f.seekg(80);
 		if (!f.eof()) {
 			uint32_t facenum = 0;
@@ -227,15 +197,15 @@ PolySet *ImportNode::evaluate_polyset(class PolySetEvaluator *) const
 				
 				std::getline(f, line);
 				boost::trim(line);
-				if (boost::regex_search(line, ex_sfe)) {
+                if (std::regex_search(line, ex_sfe)) {
 					continue;
 				}
-				if (boost::regex_search(line, ex_outer)) {
+                if (std::regex_search(line, ex_outer)) {
 					i = 0;
 					continue;
 				}
-				boost::smatch results;
-				if (boost::regex_search(line, results, ex_vertices)) {
+                std::smatch results;
+                if (std::regex_search(line, results, ex_vertices)) {
 					try {
 						for (int v=0;v<3;v++) {
 							vdata[i][v] = boost::lexical_cast<double>(results[v+1]);
@@ -275,15 +245,10 @@ PolySet *ImportNode::evaluate_polyset(class PolySetEvaluator *) const
 #ifdef ENABLE_CGAL
 		CGAL_Polyhedron poly;
 		std::ifstream file(this->filename.c_str(), std::ios::in | std::ios::binary);
-		if (!file.good()) {
-			PRINTB("WARNING: Can't open import file '%s'.", this->filename);
-		}
-		else {
-			file >> poly;
-			file.close();
-			
-			p = createPolySetFromPolyhedron(poly);
-		}
+		file >> poly;
+		file.close();
+		
+		p = createPolySetFromPolyhedron(poly);
 #else
   PRINT("WARNING: OFF import requires CGAL.");
 #endif
@@ -294,7 +259,7 @@ PolySet *ImportNode::evaluate_polyset(class PolySetEvaluator *) const
 		p = new PolySet();
 		DxfData dd(this->fn, this->fs, this->fa, this->filename, this->layername, this->origin_x, this->origin_y, this->scale);
 		p->is2d = true;
-		dxf_tesselate(p, dd, 0, Vector2d(1,1), true, false, 0);
+		dxf_tesselate(p, dd, 0, true, false, 0);
 		dxf_border_to_ps(p, dd);
 	}
 	else 
@@ -309,7 +274,6 @@ PolySet *ImportNode::evaluate_polyset(class PolySetEvaluator *) const
 std::string ImportNode::toString() const
 {
 	std::stringstream stream;
-	fs::path path((std::string)this->filename);
 
 	stream << this->name();
 	stream << "(file = " << this->filename << ", "
@@ -320,7 +284,7 @@ std::string ImportNode::toString() const
 		"$fn = " << this->fn << ", $fa = " << this->fa << ", $fs = " << this->fs
 #ifndef OPENSCAD_TESTING
   // timestamp is needed for caching, but disturbs the test framework
-				 << ", " "timestamp = " << (fs::exists(path) ? fs::last_write_time(path) : 0)
+                 << ", " "timestamp = " << 0
 #endif
 				 << ")";
 

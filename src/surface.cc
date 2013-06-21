@@ -27,10 +27,9 @@
 #include "module.h"
 #include "node.h"
 #include "polyset.h"
-#include "evalcontext.h"
+#include "context.h"
 #include "builtin.h"
 #include "printutils.h"
-#include "fileutils.h"
 #include "handle_dep.h" // handle_dep()
 #include "visitor.h"
 
@@ -44,14 +43,11 @@
 #include <boost/assign/std/vector.hpp>
 using namespace boost::assign; // bring 'operator+=()' into scope
 
-#include <boost/filesystem.hpp>
-namespace fs = boost::filesystem;
-
 class SurfaceModule : public AbstractModule
 {
 public:
 	SurfaceModule() { }
-	virtual AbstractNode *instantiate(const Context *ctx, const ModuleInstantiation *inst, const EvalContext *evalctx) const;
+	virtual AbstractNode *evaluate(const Context *ctx, const ModuleInstantiation *inst) const;
 };
 
 class SurfaceNode : public AbstractPolyNode
@@ -70,20 +66,21 @@ public:
 	virtual PolySet *evaluate_polyset(class PolySetEvaluator *) const;
 };
 
-AbstractNode *SurfaceModule::instantiate(const Context *ctx, const ModuleInstantiation *inst, const EvalContext *evalctx) const
+AbstractNode *SurfaceModule::evaluate(const Context *ctx, const ModuleInstantiation *inst) const
 {
 	SurfaceNode *node = new SurfaceNode(inst);
 	node->center = false;
 	node->convexity = 1;
 
-	AssignmentList args;
-	args += Assignment("file", NULL), Assignment("center", NULL), Assignment("convexity", NULL);
+	std::vector<std::string> argnames;
+	argnames += "file", "center", "convexity";
+	std::vector<Expression*> argexpr;
 
 	Context c(ctx);
-	c.setVariables(args, evalctx);
+	c.args(argnames, argexpr, inst->argnames, inst->argvalues);
 
 	Value fileval = c.lookup_variable("file");
-	node->filename = lookup_file(fileval.isUndefined() ? "" : fileval.toString(), inst->path(), c.documentPath());
+	node->filename = c.getAbsolutePath(fileval.isUndefined() ? "" : fileval.toString());
 
 	Value center = c.lookup_variable("center", true);
 	if (center.type() == Value::BOOL) {
@@ -122,7 +119,7 @@ PolySet *SurfaceNode::evaluate_polyset(class PolySetEvaluator *) const
 			std::getline(stream, line);
 			boost::trim(line);
 		}
-		if (line.size() == 0 && stream.eof()) break;
+		if (stream.eof()) break;
 
 		int col = 0;
 		tokenizer tokens(line, sep);
@@ -225,13 +222,11 @@ PolySet *SurfaceNode::evaluate_polyset(class PolySetEvaluator *) const
 std::string SurfaceNode::toString() const
 {
 	std::stringstream stream;
-	fs::path path((std::string)this->filename);
-
 	stream << this->name() << "(file = " << this->filename << ", "
 		"center = " << (this->center ? "true" : "false")
 #ifndef OPENSCAD_TESTING
 		// timestamp is needed for caching, but disturbs the test framework
-				 << ", " "timestamp = " << (fs::exists(path) ? fs::last_write_time(path) : 0)
+                 << ", " "timestamp = " << 0
 #endif
 				 << ")";
 

@@ -1,0 +1,1 @@
+emcc -O2 libconsole.so ../openscadjs/build/CGAL-4.1/lib/libCGAL.so ../openscadjs/build/mpfr-3.1.1/src/.libs/libmpfr.so ../openscadjs/build/gmp-5.1.1/.libs/libgmp.so test2.cpp -I src --embed-file example.scad -o ~/Desktop/test.html -s TOTAL_MEMORY=50000000

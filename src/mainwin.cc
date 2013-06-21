@@ -48,12 +48,10 @@
 #include "ProgressWidget.h"
 #include "ThrownTogetherRenderer.h"
 #include "csgtermnormalizer.h"
-#include "QGLView.h"
 #include "AutoUpdater.h"
 #ifdef Q_OS_MAC
 #include "CocoaUtils.h"
 #endif
-#include "PlatformUtils.h"
 
 #include <QMenu>
 #include <QTime>
@@ -105,8 +103,6 @@
 #define OPENCSG_VERSION_STRING "unknown, <1.3.2"
 #endif
 
-#include "boosty.h"
-
 extern QString examplesdir;
 
 // Global application state
@@ -122,7 +118,7 @@ static char helptitle[] =
 #endif
 	"\nhttp://www.openscad.org\n\n";
 static char copyrighttext[] =
-	"Copyright (C) 2009-2013 The OpenSCAD Developers\n"
+	"Copyright (C) 2009-2013 Marius Kintel <marius@kintel.net> and Clifford Wolf <clifford@clifford.at>\n"
 	"\n"
 	"This program is free software; you can redistribute it and/or modify "
 	"it under the terms of the GNU General Public License as published by "
@@ -161,7 +157,7 @@ settings_valueList(const QString &key, const QList<int> &defaultList = QList<int
 }
 
 MainWindow::MainWindow(const QString &filename)
-	: root_inst("group"), progresswidget(NULL)
+	: progresswidget(NULL)
 {
 	setupUi(this);
 
@@ -171,7 +167,7 @@ MainWindow::MainWindow(const QString &filename)
 					this, SLOT(actionRenderCGALDone(CGAL_Nef_polyhedron *)));
 #endif
 
-	top_ctx.registerBuiltin();
+	register_builtin(root_ctx);
 
 	this->openglbox = NULL;
 	root_module = NULL;
@@ -198,8 +194,8 @@ MainWindow::MainWindow(const QString &filename)
 	editor->setTabStopWidth(30);
 	editor->setLineWrapping(true); // Not designable
 
-	this->qglview->statusLabel = new QLabel(this);
-	statusBar()->addWidget(this->qglview->statusLabel);
+	this->glview->statusLabel = new QLabel(this);
+	statusBar()->addWidget(this->glview->statusLabel);
 
 	animate_timer = new QTimer(this);
 	connect(animate_timer, SIGNAL(timeout()), this, SLOT(updateTVal()));
@@ -230,7 +226,6 @@ MainWindow::MainWindow(const QString &filename)
 	connect(this->fileActionSaveAs, SIGNAL(triggered()), this, SLOT(actionSaveAs()));
 	connect(this->fileActionReload, SIGNAL(triggered()), this, SLOT(actionReload()));
 	connect(this->fileActionQuit, SIGNAL(triggered()), this, SLOT(quit()));
-	connect(this->fileShowLibraryFolder, SIGNAL(triggered()), this, SLOT(actionShowLibraryFolder()));
 #ifndef __APPLE__
 	QList<QKeySequence> shortcuts = this->fileActionSave->shortcuts();
 	shortcuts.push_back(QKeySequence(Qt::Key_F2));
@@ -310,7 +305,7 @@ MainWindow::MainWindow(const QString &filename)
 	this->viewActionOpenCSG->setVisible(false);
 #else
 	connect(this->viewActionOpenCSG, SIGNAL(triggered()), this, SLOT(viewModeOpenCSG()));
-	if (!this->qglview->hasOpenCSGSupport()) {
+	if (!this->glview->hasOpenCSGSupport()) {
 		this->viewActionOpenCSG->setEnabled(false);
 	}
 #endif
@@ -362,9 +357,9 @@ MainWindow::MainWindow(const QString &filename)
 	connect(editor->document(), SIGNAL(contentsChanged()), this, SLOT(animateUpdateDocChanged()));
 	connect(editor->document(), SIGNAL(modificationChanged(bool)), this, SLOT(setWindowModified(bool)));
 	connect(editor->document(), SIGNAL(modificationChanged(bool)), fileActionSave, SLOT(setEnabled(bool)));
-	connect(this->qglview, SIGNAL(doAnimateUpdate()), this, SLOT(animateUpdate()));
+	connect(this->glview, SIGNAL(doAnimateUpdate()), this, SLOT(animateUpdate()));
 
-	connect(Preferences::inst(), SIGNAL(requestRedraw()), this->qglview, SLOT(updateGL()));
+	connect(Preferences::inst(), SIGNAL(requestRedraw()), this->glview, SLOT(updateGL()));
 	connect(Preferences::inst(), SIGNAL(fontChanged(const QString&,uint)), 
 					this, SLOT(setFont(const QString&,uint)));
 	connect(Preferences::inst(), SIGNAL(openCSGSettingsChanged()),
@@ -492,25 +487,17 @@ void MainWindow::requestOpenFile(const QString &)
 void
 MainWindow::openFile(const QString &new_filename)
 {
-	QString actual_filename = new_filename;
-	QFileInfo fi(new_filename);
-	if (fi.suffix().toLower().contains(QRegExp("^(stl|off|dxf)$"))) {
-		actual_filename = QString();
-	}
 #ifdef ENABLE_MDI
 	if (!editor->toPlainText().isEmpty()) {
-		new MainWindow(actual_filename);
+		new MainWindow(new_filename);
 		clearCurrentOutput();
 		return;
 	}
 #endif
-	setFileName(actual_filename);
+	setFileName(new_filename);
 
 	refreshDocument();
 	updateRecentFiles();
-	if (actual_filename.isEmpty()) {
-		this->editor->setPlainText(QString("import(\"%1\");\n").arg(new_filename));
-	}
 }
 
 void
@@ -518,7 +505,7 @@ MainWindow::setFileName(const QString &filename)
 {
 	if (filename.isEmpty()) {
 		this->fileName.clear();
-		this->top_ctx.setDocumentPath(currentdir);
+		this->root_ctx.setDocumentPath(currentdir);
 		setWindowTitle("OpenSCAD - New Document[*]");
 	}
 	else {
@@ -534,7 +521,7 @@ MainWindow::setFileName(const QString &filename)
 			this->fileName = fileinfo.fileName();
 		}
 		
-		this->top_ctx.setDocumentPath(fileinfo.dir().absolutePath().toLocal8Bit().constData());
+		this->root_ctx.setDocumentPath(fileinfo.dir().absolutePath().toStdString());
 		QDir::setCurrent(fileinfo.dir().absolutePath());
 	}
 
@@ -598,17 +585,26 @@ void MainWindow::refreshDocument()
 		QFile file(this->fileName);
 		if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
 			PRINTB("Failed to open file %s: %s", 
-						 this->fileName.toLocal8Bit().constData() % file.errorString().toLocal8Bit().constData());
+						 this->fileName.toStdString() % file.errorString().toStdString());
 		}
 		else {
 			QTextStream reader(&file);
 			reader.setCodec("UTF-8");
 			QString text = reader.readAll();
-			PRINTB("Loaded design '%s'.", this->fileName.toLocal8Bit().constData());
+			PRINTB("Loaded design '%s'.", this->fileName.toStdString());
 			editor->setPlainText(text);
 		}
 	}
 	setCurrentOutput();
+}
+
+AbstractNode *MainWindow::find_root_tag(AbstractNode *n)
+{
+	BOOST_FOREACH (AbstractNode *v, n->children) {
+		if (v->modinst->isRoot()) return v;
+		if (AbstractNode *vroot = find_root_tag(v)) return vroot;
+	}
+	return NULL;
 }
 
 /*!
@@ -622,7 +618,7 @@ bool MainWindow::compile(bool reload, bool procevents)
 	if (!compileTopLevelDocument(reload)) return false;
 
   // Invalidate renderers before we kill the CSG tree
-	this->qglview->setRenderer(NULL);
+	this->glview->setRenderer(NULL);
 	delete this->opencsgRenderer;
 	this->opencsgRenderer = NULL;
 	delete this->thrownTogetherRenderer;
@@ -655,8 +651,8 @@ bool MainWindow::compile(bool reload, bool procevents)
 		if (procevents) QApplication::processEvents();
 		
 		AbstractNode::resetIndexCounter();
-		this->root_inst = ModuleInstantiation("group");
-		this->absolute_root_node = this->root_module->instantiate(&top_ctx, &this->root_inst, NULL);
+		this->root_inst = ModuleInstantiation();
+		this->absolute_root_node = this->root_module->evaluate(&this->root_ctx, &this->root_inst);
 		
 		if (this->absolute_root_node) {
 			// Do we have an explicit root node (! modifier)?
@@ -775,18 +771,18 @@ void MainWindow::compileCSG(bool procevents)
 		}
 
 		if (this->root_chain && 
-				(this->root_chain->objects.size() > 
+				(this->root_chain->polysets.size() > 
 				 Preferences::inst()->getValue("advanced/openCSGLimit").toUInt())) {
-			PRINTB("WARNING: Normalized tree has %d elements!", this->root_chain->objects.size());
+			PRINTB("WARNING: Normalized tree has %d elements!", this->root_chain->polysets.size());
 			PRINT("WARNING: OpenCSG rendering has been disabled.");
 		}
 		else {
 			PRINTB("Normalized CSG tree has %d elements", 
-						 (this->root_chain ? this->root_chain->objects.size() : 0));
+						 (this->root_chain ? this->root_chain->polysets.size() : 0));
 			this->opencsgRenderer = new OpenCSGRenderer(this->root_chain, 
 																									this->highlights_chain, 
 																									this->background_chain, 
-																									this->qglview->shaderinfo);
+																									this->glview->shaderinfo);
 		}
 		this->thrownTogetherRenderer = new ThrownTogetherRenderer(this->root_chain, 
 																															this->highlights_chain, 
@@ -916,15 +912,13 @@ void MainWindow::actionSave()
 		setCurrentOutput();
 		QFile file(this->fileName);
 		if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
-			PRINTB("Failed to open file for writing: %s (%s)", this->fileName.toLocal8Bit().constData() % file.errorString().toLocal8Bit().constData());
-			QMessageBox::warning(this, windowTitle(), tr("Failed to open file for writing:\n %1 (%2)")
-					.arg(this->fileName).arg(file.errorString()));
+			PRINTB("Failed to open file for writing: %s (%s)", this->fileName.toStdString() % file.errorString().toStdString());
 		}
 		else {
 			QTextStream writer(&file);
 			writer.setCodec("UTF-8");
 			writer << this->editor->toPlainText();
-			PRINTB("Saved design '%s'.", this->fileName.toLocal8Bit().constData());
+			PRINTB("Saved design '%s'.", this->fileName.toStdString());
 			this->editor->setContentModified(false);
 		}
 		clearCurrentOutput();
@@ -957,20 +951,6 @@ void MainWindow::actionSaveAs()
 	}
 }
 
-void MainWindow::actionShowLibraryFolder()
-{
-	std::string path = PlatformUtils::libraryPath();
-	if (!fs::exists(path)) {
-		PRINTB("WARNING: Library path %s doesnt exist. Creating", path);
-		if (!PlatformUtils::createLibraryPath()) {
-			PRINTB("ERROR: Cannot create library path: %s",path);
-		}
-	}
-	QString url = QString::fromStdString( path );
-	//PRINTB("Opening file browser for %s", url.toStdString() );
-	QDesktopServices::openUrl(QUrl::fromLocalFile( url ));
-}
-
 void MainWindow::actionReload()
 {
 	if (checkEditorModified()) refreshDocument();
@@ -992,7 +972,7 @@ void MainWindow::pasteViewportTranslation()
 {
 	QTextCursor cursor = editor->textCursor();
 	QString txt;
-	txt.sprintf("[ %.2f, %.2f, %.2f ]", -qglview->cam.object_trans.x(), -qglview->cam.object_trans.y(), -qglview->cam.object_trans.z());
+	txt.sprintf("[ %.2f, %.2f, %.2f ]", -this->glview->object_trans_x, -this->glview->object_trans_y, -this->glview->object_trans_z);
 	cursor.insertText(txt);
 }
 
@@ -1001,25 +981,25 @@ void MainWindow::pasteViewportRotation()
 	QTextCursor cursor = editor->textCursor();
 	QString txt;
 	txt.sprintf("[ %.2f, %.2f, %.2f ]",
-		fmodf(360 - qglview->cam.object_rot.x() + 90, 360), fmodf(360 - qglview->cam.object_rot.y(), 360), fmodf(360 - qglview->cam.object_rot.z(), 360));
+		fmodf(360 - this->glview->object_rot_x + 90, 360), fmodf(360 - this->glview->object_rot_y, 360), fmodf(360 - this->glview->object_rot_z, 360));
 	cursor.insertText(txt);
 }
 
 void MainWindow::updateTemporalVariables()
 {
-	this->top_ctx.set_variable("$t", Value(this->e_tval->text().toDouble()));
+	this->root_ctx.set_variable("$t", Value(this->e_tval->text().toDouble()));
 	
 	Value::VectorType vpt;
-	vpt.push_back(Value(-qglview->cam.object_trans.x()));
-	vpt.push_back(Value(-qglview->cam.object_trans.y()));
-	vpt.push_back(Value(-qglview->cam.object_trans.z()));
-	this->top_ctx.set_variable("$vpt", Value(vpt));
+	vpt.push_back(Value(-this->glview->object_trans_x));
+	vpt.push_back(Value(-this->glview->object_trans_y));
+	vpt.push_back(Value(-this->glview->object_trans_z));
+	this->root_ctx.set_variable("$vpt", Value(vpt));
 	
 	Value::VectorType vpr;
-	vpr.push_back(Value(fmodf(360 - qglview->cam.object_rot.x() + 90, 360)));
-	vpr.push_back(Value(fmodf(360 - qglview->cam.object_rot.y(), 360)));
-	vpr.push_back(Value(fmodf(360 - qglview->cam.object_rot.z(), 360)));
-	top_ctx.set_variable("$vpr", Value(vpr));
+	vpr.push_back(Value(fmodf(360 - this->glview->object_rot_x + 90, 360)));
+	vpr.push_back(Value(fmodf(360 - this->glview->object_rot_y, 360)));
+	vpr.push_back(Value(fmodf(360 - this->glview->object_rot_z, 360)));
+	root_ctx.set_variable("$vpr", Value(vpr));
 }
 
 bool MainWindow::fileChangedOnDisk()
@@ -1038,11 +1018,20 @@ bool MainWindow::fileChangedOnDisk()
 	return false;
 }
 
+// FIXME: The following two methods are duplicated in ModuleCache.cc - refactor
+static bool is_modified(const std::string &filename, const time_t &mtime)
+{
+	struct stat st;
+	memset(&st, 0, sizeof(struct stat));
+	stat(filename.c_str(), &st);
+	return (st.st_mtime > mtime);
+}
+
 bool MainWindow::includesChanged()
 {
 	if (this->root_module) {
-		BOOST_FOREACH(const FileModule::IncludeContainer::value_type &item, this->root_module->includes) {
-			if (this->root_module->include_modified(item.second)) return true;
+		BOOST_FOREACH(const Module::IncludeContainer::value_type &item, this->root_module->includes) {
+			if (is_modified(item.first, item.second)) return true;
 		}
 	}
 	return false;
@@ -1059,9 +1048,8 @@ bool MainWindow::compileTopLevelDocument(bool reload)
 {
 	bool shouldcompiletoplevel = !reload;
 
-	if (includesChanged()) shouldcompiletoplevel = true;
-
-	if (reload && fileChangedOnDisk() && checkEditorModified()) {
+	if ((reload && fileChangedOnDisk() && checkEditorModified()) ||
+			includesChanged()) {
 		shouldcompiletoplevel = true;
 		refreshDocument();
 	}
@@ -1073,8 +1061,7 @@ bool MainWindow::compileTopLevelDocument(bool reload)
 		
 		this->last_compiled_doc = editor->toPlainText();
 		std::string fulltext = 
-			std::string(this->last_compiled_doc.toLocal8Bit().constData()) +
-			"\n" + commandline_commands;
+			this->last_compiled_doc.toStdString() + "\n" + commandline_commands;
 		
 		delete this->root_module;
 		this->root_module = NULL;
@@ -1190,7 +1177,7 @@ void MainWindow::actionCompile()
 	}
 
 	if (viewActionAnimate->isChecked() && e_dump->isChecked()) {
-		QImage img = this->qglview->grabFrameBuffer();
+		QImage img = this->glview->grabFrameBuffer();
 		QString filename;
 		double s = this->e_fsteps->text().toDouble();
 		double t = this->e_tval->text().toDouble();
@@ -1219,7 +1206,7 @@ void MainWindow::actionRenderCGAL()
 		return;
 	}
 
-	this->qglview->setRenderer(NULL);
+	this->glview->setRenderer(NULL);
 	delete this->cgalRenderer;
 	this->cgalRenderer = NULL;
 	if (this->root_N) {
@@ -1313,7 +1300,7 @@ void MainWindow::actionDisplayAST()
 	e->setWindowTitle("AST Dump");
 	e->setReadOnly(true);
 	if (root_module) {
-		e->setPlainText(QString::fromLocal8Bit(root_module->dump("", "").c_str()));
+		e->setPlainText(QString::fromStdString(root_module->dump("", "")));
 	} else {
 		e->setPlainText("No AST to dump. Please try compiling first...");
 	}
@@ -1331,7 +1318,7 @@ void MainWindow::actionDisplayCSGTree()
 	e->setWindowTitle("CSG Tree Dump");
 	e->setReadOnly(true);
 	if (this->root_node) {
-		e->setPlainText(QString::fromLocal8Bit(this->tree.getString(*this->root_node).c_str()));
+		e->setPlainText(QString::fromStdString(this->tree.getString(*this->root_node)));
 	} else {
 		e->setPlainText("No CSG to dump. Please try compiling first...");
 	}
@@ -1348,12 +1335,7 @@ void MainWindow::actionDisplayCSGProducts()
 	e->setTabStopWidth(30);
 	e->setWindowTitle("CSG Products Dump");
 	e->setReadOnly(true);
-	e->setPlainText(QString("\nCSG before normalization:\n%1\n\n\nCSG after normalization:\n%2\n\n\nCSG rendering chain:\n%3\n\n\nHighlights CSG rendering chain:\n%4\n\n\nBackground CSG rendering chain:\n%5\n")
-									.arg(root_raw_term ? QString::fromLocal8Bit(root_raw_term->dump().c_str()) : "N/A", 
-											 root_norm_term ? QString::fromLocal8Bit(root_norm_term->dump().c_str()) : "N/A", 
-											 this->root_chain ? QString::fromLocal8Bit(this->root_chain->dump().c_str()) : "N/A", 
-											 highlights_chain ? QString::fromLocal8Bit(highlights_chain->dump().c_str()) : "N/A", 
-											 background_chain ? QString::fromLocal8Bit(background_chain->dump().c_str()) : "N/A"));
+	e->setPlainText(QString("\nCSG before normalization:\n%1\n\n\nCSG after normalization:\n%2\n\n\nCSG rendering chain:\n%3\n\n\nHighlights CSG rendering chain:\n%4\n\n\nBackground CSG rendering chain:\n%5\n").arg(root_raw_term ? QString::fromStdString(root_raw_term->dump()) : "N/A", root_norm_term ? QString::fromStdString(root_norm_term->dump()) : "N/A", this->root_chain ? QString::fromStdString(this->root_chain->dump()) : "N/A", highlights_chain ? QString::fromStdString(highlights_chain->dump()) : "N/A", background_chain ? QString::fromStdString(background_chain->dump()) : "N/A"));
 	e->show();
 	e->resize(600, 400);
 	clearCurrentOutput();
@@ -1401,7 +1383,7 @@ void MainWindow::actionExportSTLorOFF(bool)
 
 	std::ofstream fstream(stl_filename.toUtf8());
 	if (!fstream.is_open()) {
-		PRINTB("Can't open file \"%s\" for export", stl_filename.toLocal8Bit().constData());
+		PRINTB("Can't open file \"%s\" for export", stl_filename.toStdString());
 	}
 	else {
 		if (stl_mode) export_stl(this->root_N, fstream);
@@ -1454,7 +1436,7 @@ void MainWindow::actionExportDXF()
 
 	std::ofstream fstream(dxf_filename.toUtf8());
 	if (!fstream.is_open()) {
-		PRINTB("Can't open file \"%s\" for export", dxf_filename.toLocal8Bit().constData());
+		PRINTB("Can't open file \"%s\" for export", dxf_filename.toStdString());
 	}
 	else {
 		export_dxf(this->root_N, fstream);
@@ -1487,7 +1469,7 @@ void MainWindow::actionExportCSG()
 
 	std::ofstream fstream(csg_filename.toUtf8());
 	if (!fstream.is_open()) {
-		PRINTB("Can't open file \"%s\" for export", csg_filename.toLocal8Bit().constData());
+		PRINTB("Can't open file \"%s\" for export", csg_filename.toStdString());
 	}
 	else {
 		fstream << this->tree.getString(*this->root_node) << "\n";
@@ -1500,17 +1482,20 @@ void MainWindow::actionExportCSG()
 
 void MainWindow::actionExportImage()
 {
+	QImage img = this->glview->grabFrameBuffer();
 	setCurrentOutput();
 
 	QString img_filename = QFileDialog::getSaveFileName(this,
 			"Export Image", "", "PNG Files (*.png)");
 	if (img_filename.isEmpty()) {
 		PRINT("No filename specified. Image export aborted.");
-	} else {
-		qglview->save(img_filename.toLocal8Bit().constData());
+		clearCurrentOutput();
+		return;
 	}
+
+	img.save(img_filename, "PNG");
+
 	clearCurrentOutput();
-	return;
 }
 
 void MainWindow::actionFlushCaches()
@@ -1542,11 +1527,10 @@ void MainWindow::viewModeActionsUncheck()
 */
 void MainWindow::viewModeOpenCSG()
 {
-	if (this->qglview->hasOpenCSGSupport()) {
+	if (this->glview->hasOpenCSGSupport()) {
 		viewModeActionsUncheck();
 		viewActionOpenCSG->setChecked(true);
-		this->qglview->setRenderer(this->opencsgRenderer ? (Renderer *)this->opencsgRenderer : (Renderer *)this->thrownTogetherRenderer);
-		this->qglview->updateGL();
+		this->glview->setRenderer(this->opencsgRenderer ? (Renderer *)this->opencsgRenderer : (Renderer *)this->thrownTogetherRenderer);
 	} else {
 		viewModeThrownTogether();
 	}
@@ -1560,18 +1544,17 @@ void MainWindow::viewModeCGALSurface()
 {
 	viewModeActionsUncheck();
 	viewActionCGALSurfaces->setChecked(true);
-	this->qglview->setShowFaces(true);
-	this->qglview->setRenderer(this->cgalRenderer);
-	this->qglview->updateGL();
+	this->glview->setShowFaces(true);
+	this->glview->setRenderer(this->cgalRenderer);
+	this->glview->updateGL();
 }
 
 void MainWindow::viewModeCGALGrid()
 {
 	viewModeActionsUncheck();
 	viewActionCGALGrid->setChecked(true);
-	this->qglview->setShowFaces(false);
-	this->qglview->setRenderer(this->cgalRenderer);
-	this->qglview->updateGL();
+	this->glview->setShowFaces(false);
+	this->glview->setRenderer(this->cgalRenderer);
 }
 
 #endif /* ENABLE_CGAL */
@@ -1580,32 +1563,31 @@ void MainWindow::viewModeThrownTogether()
 {
 	viewModeActionsUncheck();
 	viewActionThrownTogether->setChecked(true);
-	this->qglview->setRenderer(this->thrownTogetherRenderer);
-	this->qglview->updateGL();
+	this->glview->setRenderer(this->thrownTogetherRenderer);
 }
 
 void MainWindow::viewModeShowEdges()
 {
 	QSettings settings;
 	settings.setValue("view/showEdges",viewActionShowEdges->isChecked());
-	this->qglview->setShowEdges(viewActionShowEdges->isChecked());
-	this->qglview->updateGL();
+	this->glview->setShowEdges(viewActionShowEdges->isChecked());
+	this->glview->updateGL();
 }
 
 void MainWindow::viewModeShowAxes()
 {
 	QSettings settings;
 	settings.setValue("view/showAxes",viewActionShowAxes->isChecked());
-	this->qglview->setShowAxes(viewActionShowAxes->isChecked());
-	this->qglview->updateGL();
+	this->glview->setShowAxes(viewActionShowAxes->isChecked());
+	this->glview->updateGL();
 }
 
 void MainWindow::viewModeShowCrosshairs()
 {
 	QSettings settings;
 	settings.setValue("view/showCrosshairs",viewActionShowCrosshairs->isChecked());
-	this->qglview->setShowCrosshairs(viewActionShowCrosshairs->isChecked());
-	this->qglview->updateGL();
+	this->glview->setShowCrosshairs(viewActionShowCrosshairs->isChecked());
+	this->glview->updateGL();
 }
 
 void MainWindow::viewModeAnimate()
@@ -1643,50 +1625,66 @@ void MainWindow::animateUpdate()
 
 void MainWindow::viewAngleTop()
 {
-	qglview->cam.object_rot << 90,0,0;
-	this->qglview->updateGL();
+	this->glview->object_rot_x = 90;
+	this->glview->object_rot_y = 0;
+	this->glview->object_rot_z = 0;
+	this->glview->updateGL();
 }
 
 void MainWindow::viewAngleBottom()
 {
-	qglview->cam.object_rot << 270,0,0;
-	this->qglview->updateGL();
+	this->glview->object_rot_x = 270;
+	this->glview->object_rot_y = 0;
+	this->glview->object_rot_z = 0;
+	this->glview->updateGL();
 }
 
 void MainWindow::viewAngleLeft()
 {
-	qglview->cam.object_rot << 0,0,90;
-	this->qglview->updateGL();
+	this->glview->object_rot_x = 0;
+	this->glview->object_rot_y = 0;
+	this->glview->object_rot_z = 90;
+	this->glview->updateGL();
 }
 
 void MainWindow::viewAngleRight()
 {
-	qglview->cam.object_rot << 0,0,270;
-	this->qglview->updateGL();
+	this->glview->object_rot_x = 0;
+	this->glview->object_rot_y = 0;
+	this->glview->object_rot_z = 270;
+	this->glview->updateGL();
 }
 
 void MainWindow::viewAngleFront()
 {
-	qglview->cam.object_rot << 0,0,0;
-	this->qglview->updateGL();
+	this->glview->object_rot_x = 0;
+	this->glview->object_rot_y = 0;
+	this->glview->object_rot_z = 0;
+	this->glview->updateGL();
 }
 
 void MainWindow::viewAngleBack()
 {
-	qglview->cam.object_rot << 0,0,180;
-	this->qglview->updateGL();
+	this->glview->object_rot_x = 0;
+	this->glview->object_rot_y = 0;
+	this->glview->object_rot_z = 180;
+	this->glview->updateGL();
 }
 
 void MainWindow::viewAngleDiagonal()
 {
-	qglview->cam.object_rot << 35,0,-25;
-	this->qglview->updateGL();
+	this->glview->object_rot_x = 35;
+	this->glview->object_rot_y = 0;
+	this->glview->object_rot_z = -25;
+	this->glview->updateGL();
 }
 
 void MainWindow::viewCenter()
 {
-	qglview->cam.object_trans << 0,0,0;
-	this->qglview->updateGL();
+	this->glview->object_trans_x = 0;
+	this->glview->object_trans_y = 0;
+	this->glview->object_trans_z = 0;
+	this->glview->updateGL();
 }
 
 void MainWindow::viewPerspective()
@@ -1695,8 +1693,8 @@ void MainWindow::viewPerspective()
 	settings.setValue("view/orthogonalProjection",false);
 	viewActionPerspective->setChecked(true);
 	viewActionOrthogonal->setChecked(false);
-	this->qglview->setOrthoMode(false);
-	this->qglview->updateGL();
+	this->glview->setOrthoMode(false);
+	this->glview->updateGL();
 }
 
 void MainWindow::viewOrthogonal()
@@ -1705,8 +1703,8 @@ void MainWindow::viewOrthogonal()
 	settings.setValue("view/orthogonalProjection",true);
 	viewActionPerspective->setChecked(false);
 	viewActionOrthogonal->setChecked(true);
-	this->qglview->setOrthoMode(true);
-	this->qglview->updateGL();
+	this->glview->setOrthoMode(true);
+	this->glview->updateGL();
 }
 
 void MainWindow::hideConsole()
@@ -1776,18 +1774,14 @@ void MainWindow::helpLibrary()
 									OPENCSG_VERSION_STRING,
 									qVersion());
 
-#if defined( __MINGW64__ )
-	libinfo += QString("Compiled for MingW64\n\n");
-#elif defined( __MINGW32__ )
-	libinfo += QString("Compiled for MingW32\n\n");
-#endif
-
 	if (!this->openglbox) {
-    this->openglbox = new QMessageBox(QMessageBox::Information, 
-                                      "OpenGL Info", "OpenSCAD Detailed Library Info                  ",
-                                      QMessageBox::Ok, this);
+		this->openglbox = new QMessageBox(QMessageBox::Information, 
+																			"OpenGL Info", "Detailed Library Info",
+																			QMessageBox::Ok, this);
+		
 	}
-  this->openglbox->setDetailedText(libinfo + QString(qglview->getRendererInfo().c_str()));
+
+	this->openglbox->setDetailedText(libinfo + this->glview->getRendererInfo());
 	this->openglbox->show();
 }
 
@@ -1863,7 +1857,7 @@ void MainWindow::consoleOutput(const std::string &msg, void *userdata)
   // originates in a worker thread.
 	MainWindow *thisp = static_cast<MainWindow*>(userdata);
 	QMetaObject::invokeMethod(thisp->console, "append", Qt::QueuedConnection,
-														Q_ARG(QString, QString::fromLocal8Bit(msg.c_str())));
+														 Q_ARG(QString, QString::fromStdString(msg)));
 }
 
 void MainWindow::setCurrentOutput()

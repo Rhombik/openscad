@@ -57,7 +57,6 @@ void CSGTermEvaluator::applyToChildren(const AbstractNode &node, CSGTermEvaluato
 		}
 	}
 	if (t1 && node.modinst->isHighlight()) {
-		t1->flag = CSGTerm::FLAG_HIGHLIGHT;
 		this->highlights.push_back(t1);
 	}
 	if (t1 && node.modinst->isBackground()) {
@@ -96,7 +95,6 @@ static shared_ptr<CSGTerm> evaluate_csg_term_from_ps(const State &state,
 	stream << node.name() << node.index();
 	shared_ptr<CSGTerm> t(new CSGTerm(ps, state.matrix(), state.color(), stream.str()));
 	if (modinst->isHighlight()) {
-		t->flag = CSGTerm::FLAG_HIGHLIGHT;
 		highlights.push_back(t);
 	}
 	if (modinst->isBackground()) {
@@ -126,7 +124,7 @@ Response CSGTermEvaluator::visit(State &state, const AbstractPolyNode &node)
 Response CSGTermEvaluator::visit(State &state, const CsgNode &node)
 {
 	if (state.isPostfix()) {
-		CsgOp op = CSGT_UNION;
+		CsgOp op;
 		switch (node.type) {
 		case CSG_TYPE_UNION:
 			op = CSGT_UNION;

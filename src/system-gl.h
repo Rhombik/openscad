@@ -13,10 +13,4 @@
  #endif
 #endif
 
-#include <string>
-
-std::string glew_dump();
-std::string glew_extensions_dump();
-bool report_glerror(const char * function);
-
 #endif

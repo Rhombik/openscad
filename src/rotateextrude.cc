@@ -26,9 +26,8 @@
 
 #include "rotateextrudenode.h"
 #include "module.h"
-#include "evalcontext.h"
+#include "context.h"
 #include "printutils.h"
-#include "fileutils.h"
 #include "builtin.h"
 #include "polyset.h"
 #include "visitor.h"
@@ -39,25 +38,23 @@
 #include <boost/assign/std/vector.hpp>
 using namespace boost::assign; // bring 'operator+=()' into scope
 
-#include <boost/filesystem.hpp>
-namespace fs = boost::filesystem;
-
 class RotateExtrudeModule : public AbstractModule
 {
 public:
 	RotateExtrudeModule() { }
-	virtual AbstractNode *instantiate(const Context *ctx, const ModuleInstantiation *inst, const EvalContext *evalctx) const;
+	virtual AbstractNode *evaluate(const Context *ctx, const ModuleInstantiation *inst) const;
 };
 
-AbstractNode *RotateExtrudeModule::instantiate(const Context *ctx, const ModuleInstantiation *inst, const EvalContext *evalctx) const
+AbstractNode *RotateExtrudeModule::evaluate(const Context *ctx, const ModuleInstantiation *inst) const
 {
 	RotateExtrudeNode *node = new RotateExtrudeNode(inst);
 
-	AssignmentList args;
-	args += Assignment("file", NULL), Assignment("layer", NULL), Assignment("origin", NULL), Assignment("scale", NULL);
+	std::vector<std::string> argnames;
+	argnames += "file", "layer", "origin", "scale";
+	std::vector<Expression*> argexpr;
 
 	Context c(ctx);
-	c.setVariables(args, evalctx);
+	c.args(argnames, argexpr, inst->argnames, inst->argvalues);
 
 	node->fn = c.lookup_variable("$fn").toDouble();
 	node->fs = c.lookup_variable("$fs").toDouble();
@@ -71,7 +68,7 @@ AbstractNode *RotateExtrudeModule::instantiate(const Context *ctx, const ModuleI
 
 	if (!file.isUndefined()) {
 		PRINT("DEPRECATED: Support for reading files in rotate_extrude will be removed in future releases. Use a child import() instead.");
-		node->filename = lookup_file(file.toString(), inst->path(), c.documentPath());
+		node->filename = c.getAbsolutePath(file.toString());
 	}
 
 	node->layername = layer.isUndefined() ? "" : layer.toString();
@@ -86,8 +83,8 @@ AbstractNode *RotateExtrudeModule::instantiate(const Context *ctx, const ModuleI
 		node->scale = 1;
 
 	if (node->filename.empty()) {
-		std::vector<AbstractNode *> instantiatednodes = inst->instantiateChildren(evalctx);
-		node->children.insert(node->children.end(), instantiatednodes.begin(), instantiatednodes.end());
+		std::vector<AbstractNode *> evaluatednodes = inst->evaluateChildren();
+		node->children.insert(node->children.end(), evaluatednodes.begin(), evaluatednodes.end());
 	}
 
 	return node;
@@ -115,7 +112,6 @@ std::string RotateExtrudeNode::toString() const
 
 	stream << this->name() << "(";
 	if (!this->filename.empty()) { // Ignore deprecated parameters if empty 
-		fs::path path((std::string)this->filename);
 		stream <<
 			"file = " << this->filename << ", "
 			"layer = " << QuotedString(this->layername) << ", "
@@ -123,7 +119,7 @@ std::string RotateExtrudeNode::toString() const
 			"scale = " << this->scale << ", "
 #ifndef OPENSCAD_TESTING
 			// timestamp is needed for caching, but disturbs the test framework
-			<< "timestamp = " << (fs::exists(path) ? fs::last_write_time(path) : 0) << ", "
+            << "timestamp = " << 0 << ", "
 #endif
 			;
 	}

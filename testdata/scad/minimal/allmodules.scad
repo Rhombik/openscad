@@ -2,13 +2,12 @@ minkowski();
 glide();
 subdiv();
 hull();
-resize();
 child();
 echo();
 assign();
 for();
 intersection_for();
-if(false) { cube(); } else { sphere(); }
+if(true) { }
 union();
 difference();
 intersection();

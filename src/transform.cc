@@ -26,11 +26,9 @@
 
 #include "transformnode.h"
 #include "module.h"
-#include "evalcontext.h"
+#include "context.h"
 #include "polyset.h"
 #include "builtin.h"
-#include "value.h"
-#include "printutils.h"
 #include <sstream>
 #include <vector>
 #include <assert.h>
@@ -50,39 +48,40 @@ class TransformModule : public AbstractModule
 public:
 	transform_type_e type;
 	TransformModule(transform_type_e type) : type(type) { }
-	virtual AbstractNode *instantiate(const Context *ctx, const ModuleInstantiation *inst, const EvalContext *evalctx) const;
+	virtual AbstractNode *evaluate(const Context *ctx, const ModuleInstantiation *inst) const;
 };
 
-AbstractNode *TransformModule::instantiate(const Context *ctx, const ModuleInstantiation *inst, const EvalContext *evalctx) const
+AbstractNode *TransformModule::evaluate(const Context *ctx, const ModuleInstantiation *inst) const
 {
 	TransformNode *node = new TransformNode(inst);
 
 	node->matrix = Transform3d::Identity();
 
-	AssignmentList args;
+	std::vector<std::string> argnames;
+	std::vector<Expression*> argexpr;
 
 	switch (this->type) {
 	case SCALE:
-		args += Assignment("v", NULL);
+		argnames += "v";
 		break;
 	case ROTATE:
-		args += Assignment("a", NULL), Assignment("v", NULL);
+		argnames += "a", "v";
 		break;
 	case MIRROR:
-		args += Assignment("v", NULL);
+		argnames += "v";
 		break;
 	case TRANSLATE:
-		args += Assignment("v", NULL);
+		argnames += "v";
 		break;
 	case MULTMATRIX:
-		args += Assignment("m", NULL);
+		argnames += "m";
 		break;
 	default:
 		assert(false);
 	}
 
 	Context c(ctx);
-	c.setVariables(args, evalctx);
+	c.args(argnames, argexpr, inst->argnames, inst->argvalues);
 
 	if (this->type == SCALE)
 	{
@@ -175,8 +174,8 @@ AbstractNode *TransformModule::instantiate(const Context *ctx, const ModuleInsta
 		}
 	}
 
-	std::vector<AbstractNode *> instantiatednodes = inst->instantiateChildren(evalctx);
-	node->children.insert(node->children.end(), instantiatednodes.begin(), instantiatednodes.end());
+	std::vector<AbstractNode *> evaluatednodes = inst->evaluateChildren();
+	node->children.insert(node->children.end(), evaluatednodes.begin(), evaluatednodes.end());
 
 	return node;
 }
@@ -189,8 +188,8 @@ std::string TransformNode::toString() const
 	for (int j=0;j<4;j++) {
 		stream << "[";
 		for (int i=0;i<4;i++) {
-			Value v( this->matrix(j, i) );
-			stream << v;
+			// FIXME: The 0 test is to avoid a leading minus before a single 0 (cosmetics)
+			stream << ((this->matrix(j, i)==0)?0:this->matrix(j, i));
 			if (i != 3) stream << ", ";
 		}
 		stream << "]";

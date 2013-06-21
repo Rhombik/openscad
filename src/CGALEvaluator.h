@@ -4,6 +4,7 @@
 #include "visitor.h"
 #include "CGAL_Nef_polyhedron.h"
 #include "PolySetCGALEvaluator.h"
+#include "transformnode.h"
 
 #include <string>
 #include <map>
@@ -24,17 +25,17 @@ public:
 	virtual Response visit(State &state, const CgaladvNode &node);
 
  	CGAL_Nef_polyhedron evaluateCGALMesh(const AbstractNode &node);
-	CGAL_Nef_polyhedron evaluateCGALMesh(const PolySet &polyset);
+    static CGAL_Nef_polyhedron evaluateCGALMesh(const PolySet &polyset);
 
 	const Tree &getTree() const { return this->tree; }
+    static void process(CGAL_Nef_polyhedron &target, const CGAL_Nef_polyhedron &src, CGALEvaluator::CsgOp op);
+    static CGAL_Nef_polyhedron transformPoly(CGAL_Nef_polyhedron N, Transform3d matrix);
+    static CGAL_Nef_polyhedron applyHull(std::list<CGAL_Nef_polyhedron> polys);
 
 private:
   void addToParent(const State &state, const AbstractNode &node, const CGAL_Nef_polyhedron &N);
   bool isCached(const AbstractNode &node) const;
-	void process(CGAL_Nef_polyhedron &target, const CGAL_Nef_polyhedron &src, CGALEvaluator::CsgOp op);
 	CGAL_Nef_polyhedron applyToChildren(const AbstractNode &node, CGALEvaluator::CsgOp op);
-	CGAL_Nef_polyhedron applyHull(const CgaladvNode &node);
-	CGAL_Nef_polyhedron applyResize(const CgaladvNode &node);
 
 	std::string currindent;
   typedef std::pair<const AbstractNode *, CGAL_Nef_polyhedron> ChildItem;
@@ -46,7 +47,7 @@ private:
 public:
 	// FIXME: Do we need to make this visible? Used for cache management
  // Note: psevaluator constructor needs this->tree to be initialized first
-	PolySetCGALEvaluator psevaluator;
+    PolySetCGALEvaluator psevaluator;
 };
 
 #endif
