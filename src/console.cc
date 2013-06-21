@@ -58,7 +58,7 @@ void set_report_func(void (*f)(const class AbstractNode *node, void *userdata, i
     rf = f;
 }
 
-int convertToStl(char *input, char *output, int thingmy) {
+int convertToStl(char *input, char *output) {
 
     PRINT("Starting conversion process");
     // Causes CGAL errors to abort directly instead of throwing exceptions
@@ -117,11 +117,6 @@ int convertToStl(char *input, char *output, int thingmy) {
     PRINT("Evaluating Mesh");
     CGAL_Nef_polyhedron resultPoly;
     resultPoly = cgalevaluator.evaluateCGALMesh(*root_node);
-
-    if(thingmy != 0) {
-        fprintf(stderr, "Assertion failure in CGAL. h.has_on(p).\n");
-        exit(1);
-    }
 
     PRINT("Evaluating MESH complete");
 
